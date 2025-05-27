@@ -21,11 +21,24 @@ const playlistArtists = document.getElementById('playlist-artists');
 const backToProfileButton = document.getElementById('back-to-profile');
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
+const loader = document.getElementById('loader');
 
 // Armazenar tokens
 let accessToken = '';
 let refreshToken = '';
 let expiresIn = 0;
+
+// Armazenar dados da pré-visualização da playlist
+let previewPlaylistData = null;
+
+// Mostrar/esconder loader
+function showLoader() {
+    loader.classList.remove('hidden');
+}
+
+function hideLoader() {
+    loader.classList.add('hidden');
+}
 
 // Verificar se temos um token no localStorage ou nos parâmetros de URL
 function checkAuth() {
@@ -179,8 +192,26 @@ function formatDuration(ms) {
 }
 
 // Renderizar artistas e faixas na página de playlist
-function renderPlaylistDetails(artists) {
+function renderPlaylistDetails(artists, isPreview = false) {
     playlistArtists.innerHTML = '';
+    
+    // Se for pré-visualização, adicionar botão para criar playlist
+    if (isPreview) {
+        const createButtonDiv = document.createElement('div');
+        createButtonDiv.className = 'create-playlist-action';
+        createButtonDiv.innerHTML = `
+            <button id="confirm-create-playlist" class="btn primary">Criar Playlist</button>
+            <button id="cancel-create-playlist" class="btn tertiary">Voltar</button>
+        `;
+        playlistArtists.appendChild(createButtonDiv);
+        
+        // Adicionar event listeners
+        document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
+        document.getElementById('cancel-create-playlist').addEventListener('click', () => {
+            playlistSection.classList.add('hidden');
+            profileSection.classList.remove('hidden');
+        });
+    }
     
     artists.forEach(artist => {
         if (artist.notFound) {
@@ -263,62 +294,94 @@ function renderPlaylistDetails(artists) {
     });
 }
 
-// Criar playlist com músicas dos artistas favoritos
-async function createArtistPlaylist() {
-    // Mostrar mensagem de carregamento
-    resultMessage.textContent = 'Criando playlist... Isso pode levar alguns segundos.';
-    resultMessage.classList.remove('hidden');
-    resultMessage.classList.remove('success', 'error');
-    createPlaylistButton.disabled = true;
+// Carregar prévia das músicas dos artistas favoritos
+async function previewTopArtists() {
+    showLoader();
     
     try {
-        const response = await fetch('/create-artist-playlist', {
-            method: 'POST',
+        const response = await fetch('/top-artists', {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
+                'Authorization': `Bearer ${accessToken}`
             }
         });
         
         if (response.status === 401) {
             // Token inválido, tentar refresh
             await refreshAccessToken();
-            return createArtistPlaylist();
+            return previewTopArtists();
         }
         
         if (!response.ok) {
-            throw new Error('Error creating playlist');
+            throw new Error('Error fetching top artists');
         }
         
-        const data = await response.json();
+        const topArtistsData = await response.json();
+        const artists = topArtistsData.items.slice(0, 10); // Limitar a 10 artistas
         
-        // Mostrar mensagem de sucesso
-        resultMessage.textContent = 'Playlist criada com sucesso!';
-        resultMessage.classList.add('success');
+        // Preparar dados para pré-visualização
+        const previewArtists = [];
         
-        // Mostrar detalhes da playlist
-        profileSection.classList.add('hidden');
-        loginSection.classList.add('hidden');
-        playlistSection.classList.remove('hidden');
+        for (const artist of artists) {
+            try {
+                // Obter as faixas mais populares do artista
+                const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=5`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!tracksResponse.ok) {
+                    throw new Error(`Error fetching tracks for ${artist.name}`);
+                }
+                
+                const tracksData = await tracksResponse.json();
+                
+                previewArtists.push({
+                    id: artist.id,
+                    name: artist.name,
+                    image: artist.images.length > 0 ? artist.images[0].url : null,
+                    tracks: tracksData.tracks.map(track => ({
+                        id: track.id,
+                        name: track.name,
+                        uri: track.uri,
+                        duration_ms: track.duration_ms,
+                        album: {
+                            name: track.album.name,
+                            image: track.album.images.length > 0 ? track.album.images[0].url : null
+                        }
+                    }))
+                });
+            } catch (error) {
+                console.error(`Error processing artist ${artist.name}:`, error);
+                previewArtists.push({
+                    name: artist.name,
+                    error: true,
+                    errorMessage: error.message || "Erro desconhecido"
+                });
+            }
+        }
         
-        playlistName.textContent = data.playlist.name;
-        playlistDescription.textContent = data.playlist.description;
-        playlistLink.href = data.playlist.external_urls.spotify;
+        // Armazenar dados para criar a playlist depois
+        previewPlaylistData = {
+            type: 'top',
+            artists: previewArtists
+        };
         
-        // Renderizar artistas e faixas
-        renderPlaylistDetails(data.artists);
+        // Mostrar prévia
+        showPlaylistPreview("Prévia - Meus Artistas Favoritos", "Estas faixas serão adicionadas à sua playlist.");
         
     } catch (error) {
-        console.error('Error creating playlist:', error);
-        resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
+        console.error('Error previewing top artists:', error);
+        resultMessage.textContent = 'Erro ao carregar artistas favoritos. Tente novamente.';
+        resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
     } finally {
-        createPlaylistButton.disabled = false;
+        hideLoader();
     }
 }
 
-// Criar playlist com artistas personalizados
-async function createCustomPlaylist(event) {
+// Carregar prévia das músicas dos artistas personalizados
+async function previewCustomArtists(event) {
     event.preventDefault();
     
     // Obter valores do formulário
@@ -344,61 +407,187 @@ async function createCustomPlaylist(event) {
     
     // Obter número de músicas e nome da playlist
     const tracksCount = tracksPerArtist.value;
-    const customPlaylistName = playlistNameInput.value.trim();
+    const customPlaylistName = playlistNameInput.value.trim() || 'Minha Playlist Personalizada';
     
-    // Mostrar mensagem de carregamento
-    resultMessage.textContent = 'Criando playlist... Isso pode levar alguns segundos.';
-    resultMessage.classList.remove('hidden', 'success', 'error');
-    createCustomPlaylistButton.disabled = true;
+    showLoader();
     
     try {
-        const response = await fetch('/create-custom-playlist', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                artists: artistsList,
-                tracksPerArtist: tracksCount,
-                playlistName: customPlaylistName
-            })
-        });
+        // Preparar dados para pré-visualização
+        const previewArtists = [];
+        
+        for (const artistName of artistsList) {
+            try {
+                // Buscar o artista
+                const searchResponse = await fetch(`/search-artist?query=${encodeURIComponent(artistName)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!searchResponse.ok) {
+                    throw new Error(`Error searching for ${artistName}`);
+                }
+                
+                const searchData = await searchResponse.json();
+                
+                if (searchData.artists.items.length === 0) {
+                    // Artista não encontrado
+                    previewArtists.push({
+                        name: artistName,
+                        notFound: true
+                    });
+                    continue;
+                }
+                
+                const artist = searchData.artists.items[0];
+                
+                // Obter as faixas mais populares do artista
+                const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                
+                if (!tracksResponse.ok) {
+                    throw new Error(`Error fetching tracks for ${artistName}`);
+                }
+                
+                const tracksData = await tracksResponse.json();
+                
+                previewArtists.push({
+                    id: artist.id,
+                    name: artist.name,
+                    image: artist.images.length > 0 ? artist.images[0].url : null,
+                    tracks: tracksData.tracks.map(track => ({
+                        id: track.id,
+                        name: track.name,
+                        uri: track.uri,
+                        duration_ms: track.duration_ms,
+                        album: {
+                            name: track.album.name,
+                            image: track.album.images.length > 0 ? track.album.images[0].url : null
+                        }
+                    }))
+                });
+            } catch (error) {
+                console.error(`Error processing artist ${artistName}:`, error);
+                previewArtists.push({
+                    name: artistName,
+                    error: true,
+                    errorMessage: error.message || "Erro desconhecido"
+                });
+            }
+        }
+        
+        // Armazenar dados para criar a playlist depois
+        previewPlaylistData = {
+            type: 'custom',
+            artists: previewArtists,
+            tracksPerArtist: tracksCount,
+            playlistName: customPlaylistName
+        };
+        
+        // Mostrar prévia
+        showPlaylistPreview(`Prévia - ${customPlaylistName}`, "Estas faixas serão adicionadas à sua playlist.");
+        
+    } catch (error) {
+        console.error('Error previewing custom artists:', error);
+        resultMessage.textContent = 'Erro ao carregar artistas. Tente novamente.';
+        resultMessage.classList.remove('hidden');
+        resultMessage.classList.add('error');
+    } finally {
+        hideLoader();
+    }
+}
+
+// Mostrar a prévia da playlist
+function showPlaylistPreview(title, description) {
+    profileSection.classList.add('hidden');
+    loginSection.classList.add('hidden');
+    playlistSection.classList.remove('hidden');
+    
+    playlistName.textContent = title;
+    playlistDescription.textContent = description;
+    playlistLink.textContent = "Criar Playlist";
+    playlistLink.removeAttribute('href');
+    playlistLink.classList.add('hidden');
+    
+    // Renderizar artistas e faixas em modo de prévia
+    renderPlaylistDetails(previewPlaylistData.artists, true);
+}
+
+// Confirmar criação da playlist após prévia
+async function confirmCreatePlaylist() {
+    if (!previewPlaylistData) return;
+    
+    showLoader();
+    
+    try {
+        let response;
+        
+        if (previewPlaylistData.type === 'top') {
+            // Criar playlist com top artistas
+            response = await fetch('/create-artist-playlist', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        } else {
+            // Criar playlist com artistas personalizados
+            const artistNames = previewPlaylistData.artists
+                .map(artist => artist.notFound ? null : artist.name)
+                .filter(name => name !== null);
+                
+            response = await fetch('/create-custom-playlist', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    artists: artistNames,
+                    tracksPerArtist: previewPlaylistData.tracksPerArtist,
+                    playlistName: previewPlaylistData.playlistName
+                })
+            });
+        }
         
         if (response.status === 401) {
             // Token inválido, tentar refresh
             await refreshAccessToken();
-            return createCustomPlaylist(event);
+            return confirmCreatePlaylist();
         }
         
         if (!response.ok) {
-            throw new Error('Error creating custom playlist');
+            throw new Error('Error creating playlist');
         }
         
         const data = await response.json();
         
         // Mostrar mensagem de sucesso
         resultMessage.textContent = 'Playlist criada com sucesso!';
+        resultMessage.classList.remove('hidden');
         resultMessage.classList.add('success');
         
-        // Mostrar detalhes da playlist
-        profileSection.classList.add('hidden');
-        loginSection.classList.add('hidden');
-        playlistSection.classList.remove('hidden');
-        
+        // Atualizar a UI com a playlist criada
         playlistName.textContent = data.playlist.name;
         playlistDescription.textContent = data.playlist.description;
+        playlistLink.textContent = "Abrir no Spotify";
         playlistLink.href = data.playlist.external_urls.spotify;
+        playlistLink.classList.remove('hidden');
         
-        // Renderizar artistas e faixas
+        // Renderizar artistas e faixas (sem o botão de criar)
         renderPlaylistDetails(data.artists);
         
     } catch (error) {
-        console.error('Error creating custom playlist:', error);
+        console.error('Error creating playlist:', error);
         resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
+        resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
     } finally {
-        createCustomPlaylistButton.disabled = false;
+        hideLoader();
     }
 }
 
@@ -420,9 +609,9 @@ loginButton.addEventListener('click', () => {
     window.location.href = '/login';
 });
 
-createPlaylistButton.addEventListener('click', createArtistPlaylist);
+createPlaylistButton.addEventListener('click', previewTopArtists);
 
-createCustomPlaylistButton.addEventListener('click', createCustomPlaylist);
+createCustomPlaylistButton.addEventListener('click', previewCustomArtists);
 
 backToProfileButton.addEventListener('click', showProfile);
 
