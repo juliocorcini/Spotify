@@ -42,6 +42,9 @@ function hideLoader() {
 
 // Verificar se temos um token no localStorage ou nos parâmetros de URL
 function checkAuth() {
+    // Esconder o loader caso esteja visível
+    hideLoader();
+    
     // Verificar parâmetros de URL para tokens (se redirecionado após login)
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('access_token');
@@ -108,6 +111,9 @@ async function fetchProfile() {
         console.error('Error fetching profile:', error);
         showLogin();
         return null;
+    } finally {
+        // Garantir que o loader seja escondido em qualquer caso
+        hideLoader();
     }
 }
 
@@ -149,6 +155,9 @@ function showLogin() {
     localStorage.removeItem('spotify_access_token');
     localStorage.removeItem('spotify_refresh_token');
     localStorage.removeItem('spotify_token_expiry');
+    
+    // Garantir que o loader seja escondido
+    hideLoader();
 }
 
 // Renovar token expirado
@@ -181,6 +190,9 @@ async function refreshAccessToken() {
         console.error('Error refreshing token:', error);
         showLogin();
         return false;
+    } finally {
+        // Garantir que o loader seja escondido
+        hideLoader();
     }
 }
 
@@ -621,4 +633,8 @@ tabs.forEach(tab => {
 });
 
 // Inicializar app
-document.addEventListener('DOMContentLoaded', checkAuth); 
+document.addEventListener('DOMContentLoaded', () => {
+    // Garantir que o loader esteja escondido inicialmente
+    hideLoader();
+    checkAuth();
+}); 

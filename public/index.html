@@ -105,6 +105,13 @@
         <p>Carregando, por favor aguarde...</p>
     </div>
     
+    <script>
+        // Garantir que o loader esteja oculto quando a página carregar
+        window.addEventListener('load', function() {
+            document.getElementById('loader').classList.add('hidden');
+        });
+    </script>
+    
     <script src="app.js"></script>
 </body>
 </html> 
