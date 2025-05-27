@@ -1,4 +1,4 @@
-// Elementos DOM
+// DOM Elements
 const loginButton = document.getElementById('login-button');
 const profileSection = document.querySelector('.profile-section');
 const loginSection = document.querySelector('.login-section');
@@ -23,15 +23,15 @@ const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 const loader = document.getElementById('loader');
 
-// Armazenar tokens
+// Store tokens
 let accessToken = '';
 let refreshToken = '';
 let expiresIn = 0;
 
-// Armazenar dados da pré-visualização da playlist
+// Store playlist preview data
 let previewPlaylistData = null;
 
-// Mostrar/esconder loader
+// Show/hide loader
 function showLoader() {
     loader.classList.remove('hidden');
 }
@@ -40,54 +40,54 @@ function hideLoader() {
     loader.classList.add('hidden');
 }
 
-// Verificar se temos um token no localStorage ou nos parâmetros de URL
+// Check if we have a token in localStorage or URL parameters
 function checkAuth() {
-    // Esconder o loader caso esteja visível
+    // Hide the loader if visible
     hideLoader();
     
-    // Verificar parâmetros de URL para tokens (se redirecionado após login)
+    // Check URL parameters for tokens (if redirected after login)
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('access_token');
     const refresh = urlParams.get('refresh_token');
     const expires = urlParams.get('expires_in');
     
     if (token) {
-        // Temos tokens na URL após login
+        // We have tokens in URL after login
         accessToken = token;
         refreshToken = refresh;
         expiresIn = expires;
         
-        // Salvar tokens
+        // Save tokens
         localStorage.setItem('spotify_access_token', accessToken);
         localStorage.setItem('spotify_refresh_token', refreshToken);
         localStorage.setItem('spotify_token_expiry', new Date().getTime() + (expiresIn * 1000));
         
-        // Limpar a URL para não mostrar os tokens
+        // Clear URL to not show tokens
         window.history.replaceState({}, document.title, '/');
         
-        // Mostrar o perfil
+        // Show profile
         showProfile();
         return;
     }
     
-    // Verificar se já temos um token guardado
+    // Check if we already have a saved token
     accessToken = localStorage.getItem('spotify_access_token');
     refreshToken = localStorage.getItem('spotify_refresh_token');
     const tokenExpiry = localStorage.getItem('spotify_token_expiry');
     
     if (accessToken && tokenExpiry && new Date().getTime() < parseInt(tokenExpiry)) {
-        // Token existe e não expirou
+        // Token exists and hasn't expired
         showProfile();
     } else if (refreshToken) {
-        // Token expirou mas temos refresh token
+        // Token expired but we have refresh token
         refreshAccessToken();
     } else {
-        // Não temos nenhum token válido
+        // We don't have any valid token
         showLogin();
     }
 }
 
-// Obter perfil do usuário
+// Get user profile
 async function fetchProfile() {
     try {
         const response = await fetch('/me', {
@@ -97,7 +97,7 @@ async function fetchProfile() {
         });
         
         if (response.status === 401) {
-            // Token inválido, tentar refresh
+            // Invalid token, try refresh
             await refreshAccessToken();
             return fetchProfile();
         }
@@ -112,12 +112,12 @@ async function fetchProfile() {
         showLogin();
         return null;
     } finally {
-        // Garantir que o loader seja escondido em qualquer caso
+        // Ensure the loader is hidden in any case
         hideLoader();
     }
 }
 
-// Atualizar a UI com dados do perfil
+// Update UI with profile data
 async function showProfile() {
     loginSection.classList.add('hidden');
     profileSection.classList.remove('hidden');
@@ -128,23 +128,23 @@ async function showProfile() {
         
         if (!profile) return;
         
-        // Preencher dados do perfil
-        displayName.textContent = profile.display_name || 'Usuário Spotify';
+        // Fill profile data
+        displayName.textContent = profile.display_name || 'Spotify User';
         userId.textContent = `ID: ${profile.id}`;
-        email.textContent = profile.email || 'Email não disponível';
+        email.textContent = profile.email || 'Email not available';
         followers.textContent = profile.followers?.total || 0;
         
-        // Definir imagem do perfil
+        // Set profile image
         if (profile.images && profile.images.length > 0) {
             profileImage.src = profile.images[0].url;
         } else {
             profileImage.src = 'https://placehold.co/150x150?text=No+Image';
         }
         
-        // Adicionar botões de controle de conta
+        // Add account control buttons
         const profileContainer = document.getElementById('profile-container');
         
-        // Criar div para os botões se não existir
+        // Create div for buttons if it doesn't exist
         let accountControls = document.getElementById('account-controls');
         if (!accountControls) {
             accountControls = document.createElement('div');
@@ -153,63 +153,63 @@ async function showProfile() {
             profileContainer.appendChild(accountControls);
         }
         
-        // Botão de desconectar
+        // Disconnect button
         if (!document.getElementById('disconnect-button')) {
             const disconnectButton = document.createElement('button');
             disconnectButton.id = 'disconnect-button';
             disconnectButton.className = 'btn tertiary disconnect-btn';
-            disconnectButton.textContent = 'Desconectar Conta';
+            disconnectButton.textContent = 'Disconnect Account';
             disconnectButton.addEventListener('click', disconnectAccount);
             accountControls.appendChild(disconnectButton);
         }
         
-        // Botão de excluir dados
+        // Delete data button
         if (!document.getElementById('delete-data-button')) {
             const deleteButton = document.createElement('button');
             deleteButton.id = 'delete-data-button';
             deleteButton.className = 'btn tertiary delete-btn';
-            deleteButton.textContent = 'Excluir Meus Dados';
+            deleteButton.textContent = 'Delete My Data';
             deleteButton.addEventListener('click', requestDataDeletion);
             accountControls.appendChild(deleteButton);
         }
     } catch (error) {
         console.error('Error showing profile:', error);
     } finally {
-        // Garantir que o loader seja escondido
+        // Ensure the loader is hidden
         hideLoader();
     }
 }
 
-// Função para desconectar a conta
+// Function to disconnect account
 function disconnectAccount() {
-    if (confirm('Tem certeza que deseja desconectar sua conta do Spotify? Você precisará autorizar novamente para usar o aplicativo.')) {
-        // Limpar tokens e dados de autenticação
+    if (confirm('Are you sure you want to disconnect your Spotify account? You will need to authorize again to use the application.')) {
+        // Clear tokens and authentication data
         localStorage.removeItem('spotify_access_token');
         localStorage.removeItem('spotify_refresh_token');
         localStorage.removeItem('spotify_token_expiry');
         
-        // Mostrar mensagem de sucesso
-        alert('Sua conta foi desconectada com sucesso.');
+        // Show success message
+        alert('Your account has been successfully disconnected.');
         
-        // Redirecionar para a tela de login
+        // Redirect to login screen
         showLogin();
     }
 }
 
-// Função para solicitar exclusão de dados
+// Function to request data deletion
 async function requestDataDeletion() {
-    if (confirm('ATENÇÃO: Esta ação excluirá permanentemente todos os seus dados em nossos servidores, incluindo histórico de playlists criadas. Esta ação não pode ser desfeita. Deseja continuar?')) {
+    if (confirm('WARNING: This action will permanently delete all your data on our servers, including created playlists history. This action cannot be undone. Do you want to continue?')) {
         
         try {
             showLoader();
             
-            // Obter ID do usuário atual
+            // Get current user ID
             const profile = await fetchProfile();
             if (!profile || !profile.id) {
-                throw new Error('Não foi possível obter o ID do usuário');
+                throw new Error('Could not get user ID');
             }
             
-            // Enviar solicitação para excluir dados
+            // Send request to delete data
             const response = await fetch(`/api/user-data/${profile.id}`, {
                 method: 'DELETE',
                 headers: {
@@ -219,42 +219,42 @@ async function requestDataDeletion() {
             
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Falha ao excluir dados');
+                throw new Error(errorData.error || 'Failed to delete data');
             }
             
-            // Desconectar a conta após exclusão bem-sucedida
+            // Disconnect account after successful deletion
             localStorage.removeItem('spotify_access_token');
             localStorage.removeItem('spotify_refresh_token');
             localStorage.removeItem('spotify_token_expiry');
             
-            alert('Seus dados foram excluídos com sucesso. Você será redirecionado para a página inicial.');
+            alert('Your data has been successfully deleted. You will be redirected to the home page.');
             showLogin();
             
         } catch (error) {
-            console.error('Erro ao excluir dados:', error);
-            alert(`Erro ao excluir dados: ${error.message}`);
+            console.error('Error deleting data:', error);
+            alert(`Error deleting data: ${error.message}`);
         } finally {
             hideLoader();
         }
     }
 }
 
-// Mostrar tela de login
+// Show login screen
 function showLogin() {
     profileSection.classList.add('hidden');
     loginSection.classList.remove('hidden');
     playlistSection.classList.add('hidden');
     
-    // Limpar localStorage
+    // Clear localStorage
     localStorage.removeItem('spotify_access_token');
     localStorage.removeItem('spotify_refresh_token');
     localStorage.removeItem('spotify_token_expiry');
     
-    // Garantir que o loader seja escondido
+    // Ensure the loader is hidden
     hideLoader();
 }
 
-// Renovar token expirado
+// Refresh expired token
 async function refreshAccessToken() {
     try {
         const response = await fetch('/refresh', {
@@ -271,11 +271,11 @@ async function refreshAccessToken() {
         
         const data = await response.json();
         
-        // Atualizar tokens
+        // Update tokens
         accessToken = data.access_token;
         expiresIn = data.expires_in;
         
-        // Salvar no localStorage
+        // Save to localStorage
         localStorage.setItem('spotify_access_token', accessToken);
         localStorage.setItem('spotify_token_expiry', new Date().getTime() + (expiresIn * 1000));
         
@@ -285,33 +285,33 @@ async function refreshAccessToken() {
         showLogin();
         return false;
     } finally {
-        // Garantir que o loader seja escondido
+        // Ensure the loader is hidden
         hideLoader();
     }
 }
 
-// Formatar duração de faixas
+// Format track duration
 function formatDuration(ms) {
     const minutes = Math.floor(ms / 60000);
     const seconds = ((ms % 60000) / 1000).toFixed(0);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
 
-// Renderizar artistas e faixas na página de playlist
+// Render artists and tracks on playlist page
 function renderPlaylistDetails(artists, isPreview = false) {
     playlistArtists.innerHTML = '';
     
-    // Se for pré-visualização, adicionar botão para criar playlist
+    // If preview, add button to create playlist
     if (isPreview) {
         const createButtonDiv = document.createElement('div');
         createButtonDiv.className = 'create-playlist-action';
         createButtonDiv.innerHTML = `
-            <button id="confirm-create-playlist" class="btn primary">Criar Playlist</button>
-            <button id="cancel-create-playlist" class="btn tertiary">Voltar</button>
+            <button id="confirm-create-playlist" class="btn primary">Create Playlist</button>
+            <button id="cancel-create-playlist" class="btn tertiary">Back</button>
         `;
         playlistArtists.appendChild(createButtonDiv);
         
-        // Adicionar event listeners
+        // Add event listeners
         document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
         document.getElementById('cancel-create-playlist').addEventListener('click', () => {
             playlistSection.classList.add('hidden');
@@ -321,13 +321,13 @@ function renderPlaylistDetails(artists, isPreview = false) {
     
     artists.forEach(artist => {
         if (artist.notFound) {
-            // Artista não encontrado
+            // Artist not found
             const artistElement = document.createElement('div');
             artistElement.className = 'artist-item';
             artistElement.innerHTML = `
                 <div class="artist-info">
                     <div class="artist-name">${artist.name}</div>
-                    <div class="artist-not-found">(Artista não encontrado${artist.reason ? ': ' + artist.reason : ''})</div>
+                    <div class="artist-not-found">(Artist not found${artist.reason ? ': ' + artist.reason : ''})</div>
                 </div>
             `;
             playlistArtists.appendChild(artistElement);
@@ -335,31 +335,31 @@ function renderPlaylistDetails(artists, isPreview = false) {
         }
         
         if (artist.error) {
-            // Erro ao processar o artista
+            // Error processing artist
             const artistElement = document.createElement('div');
             artistElement.className = 'artist-item';
             artistElement.innerHTML = `
                 <div class="artist-info">
                     <div class="artist-name">${artist.name}</div>
-                    <div class="artist-error">(Erro ao processar este artista: ${artist.errorMessage || 'Erro desconhecido'})</div>
+                    <div class="artist-error">(Error processing this artist: ${artist.errorMessage || 'Unknown error'})</div>
                 </div>
             `;
             playlistArtists.appendChild(artistElement);
             return;
         }
         
-        // Artista encontrado com faixas
+        // Artist found with tracks
         const artistElement = document.createElement('div');
         artistElement.className = 'artist-item';
         
-        // Info do artista
+        // Artist info
         const artistInfo = document.createElement('div');
         artistInfo.className = 'artist-info';
         
-        // Imagem do artista
+        // Artist image
         const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
         
-        // Adicionar aviso se o nome do artista não for exatamente o solicitado
+        // Add warning if artist name is not exactly as requested
         const nameWarningHtml = artist.nameWarning ? 
             `<div class="artist-name-warning">${artist.nameWarning}</div>` : '';
         
@@ -371,14 +371,14 @@ function renderPlaylistDetails(artists, isPreview = false) {
             </div>
         `;
         
-        // Lista de faixas
+        // Track list
         const trackList = document.createElement('ul');
         trackList.className = 'track-list';
         
         if (!artist.tracks || artist.tracks.length === 0) {
             const noTracksItem = document.createElement('li');
             noTracksItem.className = 'no-tracks';
-            noTracksItem.textContent = 'Nenhuma faixa encontrada para este artista.';
+            noTracksItem.textContent = 'No tracks found for this artist.';
             trackList.appendChild(noTracksItem);
         } else {
             artist.tracks.forEach(track => {
@@ -399,16 +399,16 @@ function renderPlaylistDetails(artists, isPreview = false) {
             });
         }
         
-        // Adicionar tudo ao elemento do artista
+        // Add everything to the artist element
         artistElement.appendChild(artistInfo);
         artistElement.appendChild(trackList);
         
-        // Adicionar à lista de artistas
+        // Add to artists list
         playlistArtists.appendChild(artistElement);
     });
 }
 
-// Carregar prévia das músicas dos artistas favoritos
+// Load preview of favorite artists songs
 async function previewTopArtists() {
     showLoader();
     
@@ -420,7 +420,7 @@ async function previewTopArtists() {
         });
         
         if (response.status === 401) {
-            // Token inválido, tentar refresh
+            // Invalid token, try refresh
             await refreshAccessToken();
             return previewTopArtists();
         }
@@ -430,14 +430,14 @@ async function previewTopArtists() {
         }
         
         const topArtistsData = await response.json();
-        const artists = topArtistsData.items.slice(0, 10); // Limitar a 10 artistas
+        const artists = topArtistsData.items.slice(0, 10); // Limit to 10 artists
         
-        // Preparar dados para pré-visualização
+        // Prepare data for preview
         const previewArtists = [];
         
         for (const artist of artists) {
             try {
-                // Obter as faixas mais populares do artista
+                // Get artist's most popular tracks
                 const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=5`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -470,23 +470,23 @@ async function previewTopArtists() {
                 previewArtists.push({
                     name: artist.name,
                     error: true,
-                    errorMessage: error.message || "Erro desconhecido"
+                    errorMessage: error.message || "Unknown error"
                 });
             }
         }
         
-        // Armazenar dados para criar a playlist depois
+        // Store data to create playlist later
         previewPlaylistData = {
             type: 'top',
             artists: previewArtists
         };
         
-        // Mostrar prévia
-        showPlaylistPreview("Prévia - Meus Artistas Favoritos", "Estas faixas serão adicionadas à sua playlist.");
+        // Show preview
+        showPlaylistPreview("Preview - My Favorite Artists", "These tracks will be added to your playlist.");
         
     } catch (error) {
         console.error('Error previewing top artists:', error);
-        resultMessage.textContent = 'Erro ao carregar artistas favoritos. Tente novamente.';
+        resultMessage.textContent = 'Error loading favorite artists. Please try again.';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
     } finally {
@@ -494,44 +494,44 @@ async function previewTopArtists() {
     }
 }
 
-// Carregar prévia das músicas dos artistas personalizados
+// Load preview of custom artists songs
 async function previewCustomArtists(event) {
     event.preventDefault();
     
-    // Obter valores do formulário
+    // Get form values
     const artistsText = artistsInput.value.trim();
     if (!artistsText) {
-        resultMessage.textContent = 'Digite pelo menos um artista.';
+        resultMessage.textContent = 'Enter at least one artist.';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
         return;
     }
     
-    // Dividir por linha e remover linhas vazias
+    // Split by line and remove empty lines
     const artistsList = artistsText.split('\n')
         .map(name => name.trim())
         .filter(name => name.length > 0);
     
     if (artistsList.length === 0) {
-        resultMessage.textContent = 'Digite pelo menos um artista válido.';
+        resultMessage.textContent = 'Enter at least one valid artist.';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
         return;
     }
     
-    // Obter número de músicas e nome da playlist
+    // Get number of tracks and playlist name
     const tracksCount = tracksPerArtist.value;
-    const customPlaylistName = playlistNameInput.value.trim() || 'Minha Playlist Personalizada';
+    const customPlaylistName = playlistNameInput.value.trim() || 'My Custom Playlist';
     
     showLoader();
     
     try {
-        // Preparar dados para pré-visualização
+        // Prepare data for preview
         const previewArtists = [];
         
         for (const artistName of artistsList) {
             try {
-                // Buscar o artista
+                // Search for artist
                 const searchResponse = await fetch(`/search-artist?query=${encodeURIComponent(artistName)}`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -545,7 +545,7 @@ async function previewCustomArtists(event) {
                 const searchData = await searchResponse.json();
                 
                 if (searchData.artists.items.length === 0) {
-                    // Artista não encontrado
+                    // Artist not found
                     previewArtists.push({
                         name: artistName,
                         notFound: true
@@ -553,25 +553,25 @@ async function previewCustomArtists(event) {
                     continue;
                 }
                 
-                // Encontrar o artista mais próximo usando a função compareNames
+                // Find closest artist using the compareNames function
                 const artist = findBestArtistMatch(artistName, searchData.artists.items);
                 
-                // Se não encontrou um artista suficientemente similar
+                // If no sufficiently similar artist was found
                 if (!artist) {
                     previewArtists.push({
                         name: artistName,
                         notFound: true,
-                        reason: "Não foi possível encontrar este artista com exatidão suficiente."
+                        reason: "Could not find this artist with sufficient accuracy."
                     });
                     continue;
                 }
                 
-                // Verificar se o nome é exatamente o mesmo (ignorando case e espaços)
+                // Check if the name is exactly the same (ignoring case and spaces)
                 const exactMatch = artist.name.toLowerCase().trim() === artistName.toLowerCase().trim();
                 const nameWarning = !exactMatch ? 
-                    `Aviso: Encontrado "${artist.name}" em vez de "${artistName}"` : null;
+                    `Warning: Found "${artist.name}" instead of "${artistName}"` : null;
                 
-                // Obter as faixas mais populares do artista
+                // Get artist's most popular tracks
                 const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
                     headers: {
                         'Authorization': `Bearer ${accessToken}`
@@ -606,12 +606,12 @@ async function previewCustomArtists(event) {
                 previewArtists.push({
                     name: artistName,
                     error: true,
-                    errorMessage: error.message || "Erro desconhecido"
+                    errorMessage: error.message || "Unknown error"
                 });
             }
         }
         
-        // Armazenar dados para criar a playlist depois
+        // Store data to create playlist later
         previewPlaylistData = {
             type: 'custom',
             artists: previewArtists,
@@ -619,12 +619,12 @@ async function previewCustomArtists(event) {
             playlistName: customPlaylistName
         };
         
-        // Mostrar prévia
-        showPlaylistPreview(`Prévia - ${customPlaylistName}`, "Estas faixas serão adicionadas à sua playlist.");
+        // Show preview
+        showPlaylistPreview(`Preview - ${customPlaylistName}`, "These tracks will be added to your playlist.");
         
     } catch (error) {
         console.error('Error previewing custom artists:', error);
-        resultMessage.textContent = 'Erro ao carregar artistas. Tente novamente.';
+        resultMessage.textContent = 'Error loading artists. Please try again.';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
     } finally {
@@ -632,14 +632,14 @@ async function previewCustomArtists(event) {
     }
 }
 
-// Encontrar o melhor artista correspondente entre os resultados da busca
+// Find the best matching artist among search results
 function findBestArtistMatch(requestedName, candidates) {
     if (!candidates || candidates.length === 0) return null;
     
-    // Normalizar o nome solicitado
+    // Normalize the requested name
     const requestedClean = requestedName.toLowerCase().trim();
     
-    // Primeiro, procurar por correspondência exata
+    // First, look for exact match
     for (const artist of candidates) {
         const artistNameClean = artist.name.toLowerCase().trim();
         if (artistNameClean === requestedClean) {
@@ -647,7 +647,7 @@ function findBestArtistMatch(requestedName, candidates) {
         }
     }
     
-    // Segundo, procurar por inclusão
+    // Second, look for inclusion
     for (const artist of candidates) {
         const artistNameClean = artist.name.toLowerCase().trim();
         if (artistNameClean.includes(requestedClean) || requestedClean.includes(artistNameClean)) {
@@ -655,7 +655,7 @@ function findBestArtistMatch(requestedName, candidates) {
         }
     }
     
-    // Terceiro, calcular similaridade usando Levenshtein e aceitar se for alta o suficiente
+    // Third, calculate similarity using Levenshtein and accept if high enough
     for (const artist of candidates) {
         const artistNameClean = artist.name.toLowerCase().trim();
         const similarity = calculateSimilarity(requestedClean, artistNameClean);
@@ -664,30 +664,30 @@ function findBestArtistMatch(requestedName, candidates) {
         }
     }
     
-    // Se a similaridade for muito baixa, não retornar nenhum artista
+    // If similarity is too low, don't return any artist
     return null;
 }
 
-// Calcular similaridade entre duas strings (simplificado)
+// Calculate similarity between two strings (simplified)
 function calculateSimilarity(str1, str2) {
     const maxLength = Math.max(str1.length, str2.length);
-    if (maxLength === 0) return 1.0; // Ambas vazias
+    if (maxLength === 0) return 1.0; // Both empty
     
     let matches = 0;
     const minLength = Math.min(str1.length, str2.length);
     
-    // Contar caracteres correspondentes
+    // Count matching characters
     for (let i = 0; i < minLength; i++) {
         if (str1.charAt(i) === str2.charAt(i)) {
             matches++;
         }
     }
     
-    // Similaridade básica
+    // Basic similarity
     return matches / maxLength;
 }
 
-// Mostrar a prévia da playlist
+// Show playlist preview
 function showPlaylistPreview(title, description) {
     profileSection.classList.add('hidden');
     loginSection.classList.add('hidden');
@@ -695,15 +695,15 @@ function showPlaylistPreview(title, description) {
     
     playlistName.textContent = title;
     playlistDescription.textContent = description;
-    playlistLink.textContent = "Criar Playlist";
+    playlistLink.textContent = "Create Playlist";
     playlistLink.removeAttribute('href');
     playlistLink.classList.add('hidden');
     
-    // Renderizar artistas e faixas em modo de prévia
+    // Render artists and tracks in preview mode
     renderPlaylistDetails(previewPlaylistData.artists, true);
 }
 
-// Confirmar criação da playlist após prévia
+// Confirm playlist creation after preview
 async function confirmCreatePlaylist() {
     if (!previewPlaylistData) return;
     
@@ -713,7 +713,7 @@ async function confirmCreatePlaylist() {
         let response;
         
         if (previewPlaylistData.type === 'top') {
-            // Criar playlist com top artistas
+            // Create playlist with top artists
             response = await fetch('/create-artist-playlist', {
                 method: 'POST',
                 headers: {
@@ -722,7 +722,7 @@ async function confirmCreatePlaylist() {
                 }
             });
         } else {
-            // Criar playlist com artistas personalizados
+            // Create playlist with custom artists
             const artistNames = previewPlaylistData.artists
                 .map(artist => artist.notFound ? null : artist.name)
                 .filter(name => name !== null);
@@ -742,7 +742,7 @@ async function confirmCreatePlaylist() {
         }
         
         if (response.status === 401) {
-            // Token inválido, tentar refresh
+            // Invalid token, try refresh
             await refreshAccessToken();
             return confirmCreatePlaylist();
         }
@@ -753,24 +753,24 @@ async function confirmCreatePlaylist() {
         
         const data = await response.json();
         
-        // Mostrar mensagem de sucesso
-        resultMessage.textContent = 'Playlist criada com sucesso!';
+        // Show success message
+        resultMessage.textContent = 'Playlist created successfully!';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('success');
         
-        // Atualizar a UI com a playlist criada
+        // Update UI with created playlist
         playlistName.textContent = data.playlist.name;
         playlistDescription.textContent = data.playlist.description;
-        playlistLink.textContent = "Abrir no Spotify";
+        playlistLink.textContent = "Open in Spotify";
         playlistLink.href = data.playlist.external_urls.spotify;
         playlistLink.classList.remove('hidden');
         
-        // Renderizar artistas e faixas (sem o botão de criar)
+        // Render artists and tracks (without create button)
         renderPlaylistDetails(data.artists);
         
     } catch (error) {
         console.error('Error creating playlist:', error);
-        resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
+        resultMessage.textContent = 'Error creating playlist. Please try again.';
         resultMessage.classList.remove('hidden');
         resultMessage.classList.add('error');
     } finally {
@@ -778,15 +778,15 @@ async function confirmCreatePlaylist() {
     }
 }
 
-// Alternar abas
+// Switch tabs
 function switchTab(event) {
     const tabId = event.target.getAttribute('data-tab');
     
-    // Desativar todas as abas
+    // Deactivate all tabs
     tabs.forEach(tab => tab.classList.remove('active'));
     tabContents.forEach(content => content.classList.add('hidden'));
     
-    // Ativar a aba selecionada
+    // Activate selected tab
     event.target.classList.add('active');
     document.getElementById(`${tabId}-tab`).classList.remove('hidden');
 }
@@ -802,14 +802,14 @@ createCustomPlaylistButton.addEventListener('click', previewCustomArtists);
 
 backToProfileButton.addEventListener('click', showProfile);
 
-// Event listeners para as abas
+// Event listeners for tabs
 tabs.forEach(tab => {
     tab.addEventListener('click', switchTab);
 });
 
-// Inicializar app
+// Initialize app
 document.addEventListener('DOMContentLoaded', () => {
-    // Garantir que o loader esteja escondido inicialmente
+    // Ensure the loader is hidden initially
     hideLoader();
     checkAuth();
 }); 

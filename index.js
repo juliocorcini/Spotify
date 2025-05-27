@@ -73,14 +73,14 @@ function registerUser(userData) {
   const existingUserIndex = users.findIndex(u => u.id === userData.id);
   
   if (existingUserIndex >= 0) {
-    // Atualizar usuário existente
+    // Update existing user
     users[existingUserIndex] = {
       ...users[existingUserIndex],
       ...userData,
       lastLogin: new Date().toISOString()
     };
   } else {
-    // Adicionar novo usuário
+    // Add new user
     users.push({
       ...userData,
       firstLogin: new Date().toISOString(),
@@ -430,18 +430,18 @@ app.post('/create-custom-playlist', async (req, res) => {
       return res.status(400).json({ error: 'Invalid artists list' });
     }
     
-    // 1. Obter o ID do usuário
+    // 1. Get user ID
     const userInfo = await withRetry(() => spotifyApi.getMe());
     const userId = userInfo.body.id;
     
-    // 2. Criar a playlist
+    // 2. Create playlist
     const date = new Date();
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-    const playlistTitle = playlistName || `Playlist Personalizada (${dateStr})`;
+    const playlistTitle = playlistName || `Custom Playlist (${dateStr})`;
     
     const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
       name: playlistTitle,
-      description: `Playlist com músicas dos artistas selecionados. Criada em ${dateStr}`,
+      description: `Playlist with tracks from selected artists. Created on ${dateStr}`,
       public: false
     }));
     
@@ -584,22 +584,22 @@ app.post('/create-artist-playlist', async (req, res) => {
       return res.status(401).json({ error: 'No token provided' });
     }
     
-    // 1. Obter o ID do usuário
+    // 1. Get user ID
     const userInfo = await withRetry(() => spotifyApi.getMe());
     const userId = userInfo.body.id;
     
-    // 2. Obter os artistas mais ouvidos
+    // 2. Get top artists
     const topArtists = await withRetry(() => spotifyApi.getMyTopArtists({ 
       time_range: 'medium_term',
       limit: 10
     }));
     
-    // 3. Criar a playlist
+    // 3. Create playlist
     const date = new Date();
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
-      name: `Meus Artistas Favoritos (${dateStr})`,
-      description: `Playlist automática com músicas dos meus artistas favoritos. Criada em ${dateStr}`,
+      name: `My Favorite Artists (${dateStr})`,
+      description: `Automatic playlist with tracks from my favorite artists. Created on ${dateStr}`,
       public: false
     }));
     
@@ -718,7 +718,7 @@ app.get('/admin/playlist-details/:playlistId', checkAdminAuth, (req, res) => {
   const playlist = playlists.find(p => p.id === playlistId);
   
   if (!playlist) {
-    return res.status(404).json({ error: 'Playlist não encontrada' });
+    return res.status(404).json({ error: 'Playlist not found' });
   }
   
   res.json({
@@ -759,7 +759,7 @@ app.delete('/api/user-data/:userId', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     
-    // Verificar se o token pertence ao usuário que está sendo excluído
+    // Verify token belongs to the user being deleted
     spotifyApi.setAccessToken(authorization.split(' ')[1]);
     const userInfo = await spotifyApi.getMe();
     

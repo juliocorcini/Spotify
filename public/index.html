@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,66 +10,66 @@
     <div class="container">
         <header>
             <h1>ArtistToPlaylist</h1>
-            <p class="tagline">Crie playlists a partir dos seus artistas favoritos</p>
+            <p class="tagline">Create playlists from your favorite artists</p>
         </header>
         
         <main>
             <section class="login-section">
-                <h2>Conectar ao Spotify</h2>
-                <button id="login-button" class="btn primary">Login com Spotify</button>
+                <h2>Connect to Spotify</h2>
+                <button id="login-button" class="btn primary">Login with Spotify</button>
             </section>
             
             <section class="profile-section hidden">
-                <h2>Seu Perfil</h2>
+                <h2>Your Profile</h2>
                 <div id="profile-container">
                     <div class="profile-info">
-                        <img id="profile-image" src="" alt="Foto de perfil">
+                        <img id="profile-image" src="" alt="Profile photo">
                         <div class="profile-details">
                             <h3 id="display-name"></h3>
                             <p id="user-id"></p>
                             <p id="email"></p>
-                            <p><span id="followers"></span> seguidores</p>
+                            <p><span id="followers"></span> followers</p>
                         </div>
                     </div>
                 </div>
                 
                 <div class="actions">
-                    <h3>Criar Playlist</h3>
+                    <h3>Create Playlist</h3>
                     
                     <div class="tabs">
-                        <button class="tab active" data-tab="manual">Adicionar Artistas Manualmente</button>
-                        <button class="tab" data-tab="top">Usar Meus Top Artistas</button>
+                        <button class="tab active" data-tab="manual">Add Artists Manually</button>
+                        <button class="tab" data-tab="top">Use My Top Artists</button>
                     </div>
                     
                     <div class="tab-content" id="manual-tab">
                         <form id="artists-form">
                             <div class="form-group">
-                                <label for="artists-input">Artistas (um por linha):</label>
-                                <textarea id="artists-input" rows="8" placeholder="Digite o nome dos artistas, um por linha.&#10;Exemplo:&#10;Adriatique&#10;Vintage Culture&#10;Steve Angello"></textarea>
+                                <label for="artists-input">Artists (one per line):</label>
+                                <textarea id="artists-input" rows="8" placeholder="Enter artist names, one per line.&#10;Example:&#10;Adriatique&#10;Vintage Culture&#10;Steve Angello"></textarea>
                             </div>
                             
                             <div class="form-group">
-                                <label for="tracks-per-artist">Músicas por artista:</label>
+                                <label for="tracks-per-artist">Tracks per artist:</label>
                                 <select id="tracks-per-artist">
-                                    <option value="3">3 músicas</option>
-                                    <option value="5" selected>5 músicas</option>
-                                    <option value="10">10 músicas</option>
-                                    <option value="15">15 músicas</option>
+                                    <option value="3">3 tracks</option>
+                                    <option value="5" selected>5 tracks</option>
+                                    <option value="10">10 tracks</option>
+                                    <option value="15">15 tracks</option>
                                 </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="playlist-name">Nome da Playlist:</label>
-                                <input type="text" id="playlist-name-input" placeholder="Minha Playlist Personalizada">
+                                <label for="playlist-name">Playlist Name:</label>
+                                <input type="text" id="playlist-name-input" placeholder="My Custom Playlist">
                             </div>
                             
-                            <button type="submit" id="create-custom-playlist-button" class="btn primary">Criar Playlist Personalizada</button>
+                            <button type="submit" id="create-custom-playlist-button" class="btn primary">Create Custom Playlist</button>
                         </form>
                     </div>
                     
                     <div class="tab-content hidden" id="top-tab">
-                        <p>Crie uma playlist com as músicas mais populares dos seus artistas favoritos no Spotify.</p>
-                        <button id="create-playlist-button" class="btn primary">Criar Playlist de Artistas Favoritos</button>
+                        <p>Create a playlist with the most popular tracks from your favorite artists on Spotify.</p>
+                        <button id="create-playlist-button" class="btn primary">Create Playlist from Favorite Artists</button>
                     </div>
                     
                     <p id="result-message" class="result-message hidden"></p>
@@ -77,40 +77,40 @@
             </section>
             
             <section class="playlist-section hidden">
-                <h2>Playlist Criada</h2>
+                <h2>Playlist Created</h2>
                 <div id="playlist-container" class="playlist-info">
                     <h3 id="playlist-name"></h3>
                     <p id="playlist-description"></p>
-                    <a id="playlist-link" class="btn secondary" target="_blank">Abrir no Spotify</a>
+                    <a id="playlist-link" class="btn secondary" target="_blank">Open in Spotify</a>
                 </div>
                 
                 <div id="playlist-details">
-                    <h3>Conteúdo da Playlist</h3>
+                    <h3>Playlist Content</h3>
                     <div id="playlist-artists"></div>
                 </div>
                 
-                <button id="back-to-profile" class="btn tertiary">Voltar</button>
+                <button id="back-to-profile" class="btn tertiary">Back</button>
             </section>
         </main>
         
         <footer>
-            <p>ArtistToPlaylist - Uma aplicação de integração com o Spotify</p>
-            <p>Criado por Julio Corcini</p>
+            <p>ArtistToPlaylist - A Spotify integration application</p>
+            <p>Created by Julio Corcini</p>
             <p class="legal-links">
-                <a href="/legal/privacy-policy.html">Política de Privacidade</a> | 
-                <a href="/legal/terms.html">Termos de Uso</a>
+                <a href="/legal/privacy-policy.html">Privacy Policy</a> | 
+                <a href="/legal/terms.html">Terms of Use</a>
             </p>
-            <p class="admin-link"><a href="/admin" class="admin-link">Administração</a></p>
+            <p class="admin-link"><a href="/admin" class="admin-link">Administration</a></p>
         </footer>
     </div>
     
     <div id="loader" class="loader hidden">
         <div class="spinner"></div>
-        <p>Carregando, por favor aguarde...</p>
+        <p>Loading, please wait...</p>
     </div>
     
     <script>
-        // Garantir que o loader esteja oculto quando a página carregar
+        // Ensure the loader is hidden when the page loads
         window.addEventListener('load', function() {
             document.getElementById('loader').classList.add('hidden');
         });
