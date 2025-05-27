@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: spotify-api-service
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+      - key: REDIRECT_URI
+        sync: false
+      - key: FRONTEND_URI
+        sync: false
+      - key: PORT
+        value: 8888 
