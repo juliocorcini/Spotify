@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify API Test</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Spotify API Teste</h1>
+        </header>
+        
+        <main>
+            <section class="login-section">
+                <h2>Conectar ao Spotify</h2>
+                <button id="login-button" class="btn primary">Login com Spotify</button>
+            </section>
+            
+            <section class="profile-section hidden">
+                <h2>Seu Perfil</h2>
+                <div id="profile-container">
+                    <div class="profile-info">
+                        <img id="profile-image" src="" alt="Foto de perfil">
+                        <div class="profile-details">
+                            <h3 id="display-name"></h3>
+                            <p id="user-id"></p>
+                            <p id="email"></p>
+                            <p><span id="followers"></span> seguidores</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="actions">
+                    <button id="create-playlist-button" class="btn primary">Criar Playlist de Artistas Favoritos</button>
+                    <p id="result-message" class="result-message hidden"></p>
+                </div>
+            </section>
+            
+            <section class="playlist-section hidden">
+                <h2>Playlist Criada</h2>
+                <div id="playlist-container" class="playlist-info">
+                    <h3 id="playlist-name"></h3>
+                    <p id="playlist-description"></p>
+                    <a id="playlist-link" class="btn secondary" target="_blank">Abrir no Spotify</a>
+                </div>
+            </section>
+        </main>
+        
+        <footer>
+            <p>Aplicação de teste para API do Spotify</p>
+        </footer>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html> 
