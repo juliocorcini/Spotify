@@ -5,6 +5,7 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const path = require('path');
 const https = require('https');
 const fs = require('fs');
+const levenshtein = require('levenshtein');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -307,6 +308,64 @@ app.get('/artist-top-tracks/:artistId', async (req, res) => {
   }
 });
 
+// Função para comparar nomes de artistas
+function compareArtistNames(requested, found) {
+  // Converter para minúsculas e remover espaços extras
+  const requestedClean = requested.toLowerCase().trim();
+  const foundClean = found.toLowerCase().trim();
+  
+  // 1. Verificar correspondência exata
+  if (requestedClean === foundClean) {
+    return true;
+  }
+  
+  // 2. Verificar se o nome encontrado contém o nome solicitado completamente
+  if (foundClean.includes(requestedClean) || requestedClean.includes(foundClean)) {
+    return true;
+  }
+  
+  // 3. Calcular a similaridade usando distância de Levenshtein
+  const maxLength = Math.max(requestedClean.length, foundClean.length);
+  if (maxLength === 0) return true; // Ambos vazios
+  
+  const distance = levenshteinDistance(requestedClean, foundClean);
+  const similarity = (maxLength - distance) / maxLength;
+  
+  // Exigir pelo menos 80% de similaridade
+  return similarity >= 0.8;
+}
+
+// Função para calcular a distância de Levenshtein (similaridade entre strings)
+function levenshteinDistance(a, b) {
+  const matrix = [];
+  
+  // Inicializar a matriz
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  
+  // Preencher a matriz
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substituição
+          matrix[i][j - 1] + 1,     // inserção
+          matrix[i - 1][j] + 1      // exclusão
+        );
+      }
+    }
+  }
+  
+  return matrix[b.length][a.length];
+}
+
 // Create playlist with custom artists
 app.post('/create-custom-playlist', async (req, res) => {
   try {
@@ -344,8 +403,8 @@ app.post('/create-custom-playlist', async (req, res) => {
     
     for (const artistName of artists) {
       try {
-        // Buscar o artista com retry
-        const searchResult = await withRetry(() => spotifyApi.searchArtists(artistName, { limit: 1 }));
+        // Buscar o artista com retry - aumentando o limite para 5 para ter mais opções
+        const searchResult = await withRetry(() => spotifyApi.searchArtists(artistName, { limit: 5 }));
         
         if (searchResult.body.artists.items.length === 0) {
           // Artista não encontrado
@@ -360,7 +419,27 @@ app.post('/create-custom-playlist', async (req, res) => {
           continue;
         }
         
-        const artist = searchResult.body.artists.items[0];
+        // Procurar por um artista com nome correspondente entre os resultados
+        let artist = null;
+        for (const candidate of searchResult.body.artists.items) {
+          if (compareArtistNames(artistName, candidate.name)) {
+            artist = candidate;
+            break;
+          }
+        }
+        
+        // Se não encontrou uma correspondência, registrar como não encontrado
+        if (!artist) {
+          allArtistsData.push({
+            name: artistName,
+            notFound: true
+          });
+          foundArtists.push({
+            requestedName: artistName,
+            notFound: true
+          });
+          continue;
+        }
         
         // Obter faixas mais populares com retry
         const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
@@ -392,7 +471,8 @@ app.post('/create-custom-playlist', async (req, res) => {
         foundArtists.push({
           requestedName: artistName,
           id: artist.id,
-          name: artist.name
+          name: artist.name,
+          exactMatch: artist.name.toLowerCase().trim() === artistName.toLowerCase().trim()
         });
       } catch (error) {
         console.error(`Error processing artist "${artistName}":`, error);

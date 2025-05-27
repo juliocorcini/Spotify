@@ -300,11 +300,23 @@ footer {
 }
 
 .artist-not-found, 
-.artist-error {
+.artist-error,
+.artist-name-warning {
     color: #d32f2f;
     font-style: italic;
     margin-left: 10px;
     font-size: 0.9rem;
+}
+
+.artist-name-warning {
+    display: block;
+    margin-top: 5px;
+    color: #ff9800;
+}
+
+.artist-details {
+    display: flex;
+    flex-direction: column;
 }
 
 .no-tracks {

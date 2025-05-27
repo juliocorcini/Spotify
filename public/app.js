@@ -233,7 +233,7 @@ function renderPlaylistDetails(artists, isPreview = false) {
             artistElement.innerHTML = `
                 <div class="artist-info">
                     <div class="artist-name">${artist.name}</div>
-                    <div class="artist-not-found">(Artista não encontrado)</div>
+                    <div class="artist-not-found">(Artista não encontrado${artist.reason ? ': ' + artist.reason : ''})</div>
                 </div>
             `;
             playlistArtists.appendChild(artistElement);
@@ -264,9 +264,17 @@ function renderPlaylistDetails(artists, isPreview = false) {
         
         // Imagem do artista
         const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
+        
+        // Adicionar aviso se o nome do artista não for exatamente o solicitado
+        const nameWarningHtml = artist.nameWarning ? 
+            `<div class="artist-name-warning">${artist.nameWarning}</div>` : '';
+        
         artistInfo.innerHTML = `
             <img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">
-            <div class="artist-name">${artist.name}</div>
+            <div class="artist-details">
+                <div class="artist-name">${artist.name}</div>
+                ${nameWarningHtml}
+            </div>
         `;
         
         // Lista de faixas
@@ -451,7 +459,23 @@ async function previewCustomArtists(event) {
                     continue;
                 }
                 
-                const artist = searchData.artists.items[0];
+                // Encontrar o artista mais próximo usando a função compareNames
+                const artist = findBestArtistMatch(artistName, searchData.artists.items);
+                
+                // Se não encontrou um artista suficientemente similar
+                if (!artist) {
+                    previewArtists.push({
+                        name: artistName,
+                        notFound: true,
+                        reason: "Não foi possível encontrar este artista com exatidão suficiente."
+                    });
+                    continue;
+                }
+                
+                // Verificar se o nome é exatamente o mesmo (ignorando case e espaços)
+                const exactMatch = artist.name.toLowerCase().trim() === artistName.toLowerCase().trim();
+                const nameWarning = !exactMatch ? 
+                    `Aviso: Encontrado "${artist.name}" em vez de "${artistName}"` : null;
                 
                 // Obter as faixas mais populares do artista
                 const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
@@ -470,6 +494,8 @@ async function previewCustomArtists(event) {
                     id: artist.id,
                     name: artist.name,
                     image: artist.images.length > 0 ? artist.images[0].url : null,
+                    nameWarning: nameWarning,
+                    originalName: artistName,
                     tracks: tracksData.tracks.map(track => ({
                         id: track.id,
                         name: track.name,
@@ -510,6 +536,61 @@ async function previewCustomArtists(event) {
     } finally {
         hideLoader();
     }
+}
+
+// Encontrar o melhor artista correspondente entre os resultados da busca
+function findBestArtistMatch(requestedName, candidates) {
+    if (!candidates || candidates.length === 0) return null;
+    
+    // Normalizar o nome solicitado
+    const requestedClean = requestedName.toLowerCase().trim();
+    
+    // Primeiro, procurar por correspondência exata
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        if (artistNameClean === requestedClean) {
+            return artist;
+        }
+    }
+    
+    // Segundo, procurar por inclusão
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        if (artistNameClean.includes(requestedClean) || requestedClean.includes(artistNameClean)) {
+            return artist;
+        }
+    }
+    
+    // Terceiro, calcular similaridade usando Levenshtein e aceitar se for alta o suficiente
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        const similarity = calculateSimilarity(requestedClean, artistNameClean);
+        if (similarity >= 0.8) {
+            return artist;
+        }
+    }
+    
+    // Se a similaridade for muito baixa, não retornar nenhum artista
+    return null;
+}
+
+// Calcular similaridade entre duas strings (simplificado)
+function calculateSimilarity(str1, str2) {
+    const maxLength = Math.max(str1.length, str2.length);
+    if (maxLength === 0) return 1.0; // Ambas vazias
+    
+    let matches = 0;
+    const minLength = Math.min(str1.length, str2.length);
+    
+    // Contar caracteres correspondentes
+    for (let i = 0; i < minLength; i++) {
+        if (str1.charAt(i) === str2.charAt(i)) {
+            matches++;
+        }
+    }
+    
+    // Similaridade básica
+    return matches / maxLength;
 }
 
 // Mostrar a prévia da playlist
