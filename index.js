@@ -446,18 +446,28 @@ app.get('/personalized-artist-tracks/:artistId', async (req, res) => {
           limit: 10
         };
         
-        const recommendationsResult = await withRetry(() => spotifyApi.getRecommendations(recsOptions));
-        
-        // Filtrar apenas faixas do artista solicitado
-        const artistRecommendations = recommendationsResult.body.tracks.filter(track => 
-          track.artists.some(artist => artist.id === artistId)
-        );
-        
-        // Adicionar as recomendações filtradas
-        allTracks = [...allTracks, ...artistRecommendations];
+        // Verificar se o total de seeds não excede 5
+        const totalSeeds = recsOptions.seed_artists.length + recsOptions.seed_tracks.length;
+        if (totalSeeds <= 5) {
+          try {
+            const recommendationsResult = await spotifyApi.getRecommendations(recsOptions);
+            
+            // Filtrar apenas faixas do artista solicitado
+            const artistRecommendations = recommendationsResult.body.tracks.filter(track => 
+              track.artists.some(artist => artist.id === artistId)
+            );
+            
+            // Adicionar as recomendações filtradas
+            allTracks = [...allTracks, ...artistRecommendations];
+          } catch (recError) {
+            console.error('Error getting recommendations for artist tracks:', recError);
+            // Não interromper a execução, apenas registrar o erro
+          }
+        }
       }
     } catch (error) {
-      console.error('Error getting recommendations for artist tracks:', error);
+      console.error('Error preparing recommendations for artist tracks:', error);
+      // Não interromper a execução, apenas registrar o erro
     }
     
     // Remover duplicatas (mesma música em vários resultados)
@@ -556,22 +566,61 @@ app.get('/recommendations', async (req, res) => {
       }
     }
     
-    console.log('Opções de recomendação:', options);
-    
-    // Obter recomendações
-    const recommendations = await withRetry(() => spotifyApi.getRecommendations(options));
-    
-    res.status(200).json(recommendations.body);
-  } catch (err) {
-    console.error('Error getting recommendations:', err);
-    console.error('Error details:', err.message, err.stack);
-    
-    if (err.statusCode) {
-      console.error('Status code:', err.statusCode);
-      console.error('Error body:', err.body);
+    // Verificar se o total é pelo menos 1 e não mais que 5
+    const finalTotalSeeds = (options.seed_artists?.length || 0) + (options.seed_tracks?.length || 0);
+    if (finalTotalSeeds === 0) {
+      return res.status(400).json({ error: 'At least one valid seed is required' });
+    }
+    if (finalTotalSeeds > 5) {
+      return res.status(400).json({ error: 'Maximum of 5 seeds (tracks + artists) allowed' });
     }
     
-    res.status(400).json({ error: 'Error getting recommendations', details: err.message });
+    // Logar as opções para debug
+    console.log('Opções de recomendação:', JSON.stringify(options, null, 2));
+    
+    // Obter recomendações - com tratamento de erro aprimorado
+    try {
+      const recommendations = await spotifyApi.getRecommendations(options);
+      res.status(200).json(recommendations.body);
+    } catch (apiError) {
+      console.error('Error in Spotify API call:', apiError);
+      
+      // Extrair informações úteis do erro
+      const errorDetails = {
+        status: apiError.statusCode,
+        message: apiError.message || 'Unknown error',
+        body: apiError.body || {}
+      };
+      
+      // Tratamento específico para erros comuns
+      if (apiError.statusCode === 404) {
+        // Para 404, pode ser um problema com os IDs dos seeds
+        res.status(400).json({
+          error: 'One or more seed IDs are invalid or not found',
+          details: errorDetails,
+          recommendedAction: 'Check if all seed_tracks and seed_artists IDs exist and are correctly formatted'
+        });
+      } else if (apiError.statusCode === 401 || apiError.statusCode === 403) {
+        // Problemas de autenticação/autorização
+        res.status(apiError.statusCode).json({
+          error: 'Authentication or authorization error',
+          details: errorDetails,
+          recommendedAction: 'Check authentication token or permissions'
+        });
+      } else {
+        // Outros erros
+        res.status(apiError.statusCode || 500).json({
+          error: 'Error getting recommendations from Spotify API',
+          details: errorDetails
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error in recommendations endpoint:', err);
+    res.status(500).json({ 
+      error: 'Internal server error processing recommendations request',
+      message: err.message
+    });
   }
 });
 
@@ -720,315 +769,45 @@ app.post('/create-custom-playlist', async (req, res) => {
     
     const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
       name: playlistTitle,
-      description: `Playlist com músicas dos artistas selecionados. Criada em ${dateStr}`,
+      description: `Playlist com músicas selecionadas manualmente. Criada em ${dateStr}`,
       public: false
     }));
     
     const playlistId = playlist.body.id;
     
-    // 3. Processar cada artista
-    let allArtistsData = [];
-    let allTracks = [];
-    let foundArtists = []; // Para registrar os artistas encontrados
-    
-    for (const artistName of artists) {
-      try {
-        // Buscar o artista com retry - aumentando o limite para 5 para ter mais opções
-        const searchResult = await withRetry(() => spotifyApi.searchArtists(artistName, { limit: 5 }));
-        
-        if (searchResult.body.artists.items.length === 0) {
-          // Artista não encontrado
-          allArtistsData.push({
-            name: artistName,
-            notFound: true
-          });
-          foundArtists.push({
-            requestedName: artistName,
-            notFound: true
-          });
-          continue;
-        }
-        
-        // Procurar por um artista com nome correspondente entre os resultados
-        let artist = null;
-        for (const candidate of searchResult.body.artists.items) {
-          if (compareArtistNames(artistName, candidate.name)) {
-            artist = candidate;
-            break;
-          }
-        }
-        
-        // Se não encontrou uma correspondência, registrar como não encontrado
-        if (!artist) {
-          allArtistsData.push({
-            name: artistName,
-            notFound: true
-          });
-          foundArtists.push({
-            requestedName: artistName,
-            notFound: true
-          });
-          continue;
-        }
-        
-        // Obter faixas mais populares com retry
-        const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
-        const limit = parseInt(tracksPerArtist, 10) || 5;
-        const topTracks = tracksResult.body.tracks.slice(0, limit);
-        
-        // Adicionar à lista de faixas para a playlist
-        const trackUris = topTracks.map(track => track.uri);
-        allTracks = [...allTracks, ...trackUris];
-        
-        // Salvar dados do artista para exibição
-        allArtistsData.push({
-          id: artist.id,
-          name: artist.name,
-          image: artist.images.length > 0 ? artist.images[0].url : null,
-          tracks: topTracks.map(track => ({
-            id: track.id,
-            name: track.name,
-            uri: track.uri,
-            duration_ms: track.duration_ms,
-            album: {
-              name: track.album.name,
-              image: track.album.images.length > 0 ? track.album.images[0].url : null
-            }
-          }))
-        });
-        
-        // Registrar o artista encontrado
-        foundArtists.push({
-          requestedName: artistName,
-          id: artist.id,
-          name: artist.name,
-          exactMatch: artist.name.toLowerCase().trim() === artistName.toLowerCase().trim()
-        });
-      } catch (error) {
-        console.error(`Error processing artist "${artistName}":`, error);
-        allArtistsData.push({
-          name: artistName,
-          error: true,
-          errorMessage: error.message || "Erro desconhecido"
-        });
-        foundArtists.push({
-          requestedName: artistName,
-          error: true,
-          errorMessage: error.message || "Erro desconhecido"
-        });
-      }
+    // 3. Adicionar faixas à playlist (limite de 100 por vez)
+    for (let i = 0; i < trackUris.length; i += 100) {
+      const chunk = trackUris.slice(i, i + 100);
+      await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
     }
     
-    // 4. Adicionar faixas à playlist (limite de 100 por vez)
-    if (allTracks.length > 0) {
-      // Spotify só permite adicionar 100 faixas por vez
-      for (let i = 0; i < allTracks.length; i += 100) {
-        const chunk = allTracks.slice(i, i + 100);
-        await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
-      }
-    }
+    // 4. Obter informações sobre as faixas adicionadas para exibir na resposta
+    const addedTracksResponse = await withRetry(() => spotifyApi.getPlaylistTracks(playlistId));
     
     // Registrar a playlist criada
     registerPlaylist({
       id: playlist.body.id,
       name: playlist.body.name,
       description: playlist.body.description,
-      trackCount: allTracks.length,
+      trackCount: trackUris.length,
       url: playlist.body.external_urls.spotify,
-      type: 'custom',
-      artistsCount: artists.length
-    }, userId, {
-      requestedArtists: artists,
-      foundArtists: foundArtists
-    });
+      type: 'custom_tracks'
+    }, userId);
     
     res.status(200).json({
       success: true,
       playlist: playlist.body,
-      artists: allArtistsData
+      addedTracks: addedTracksResponse.body.items
     });
   } catch (err) {
-    console.error('Error creating custom playlist:', err);
+    console.error('Error creating playlist with custom tracks:', err);
     res.status(400).json({ 
-      error: 'Error creating custom playlist',
+      error: 'Error creating playlist with custom tracks',
       details: err.message
     });
   }
 });
 
-// Create playlist with top artists' tracks
-app.post('/create-artist-playlist', async (req, res) => {
-  try {
-    if (!setTokenFromRequest(req)) {
-      return res.status(401).json({ error: 'No token provided' });
-    }
-    
-    // 1. Obter o ID do usuário
-    const userInfo = await withRetry(() => spotifyApi.getMe());
-    const userId = userInfo.body.id;
-    
-    // 2. Obter os artistas mais ouvidos
-    const topArtists = await withRetry(() => spotifyApi.getMyTopArtists({ 
-      time_range: 'medium_term',
-      limit: 10
-    }));
-    
-    // 3. Criar a playlist
-    const date = new Date();
-    const dateStr = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-    const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
-      name: `Meus Artistas Favoritos (${dateStr})`,
-      description: `Playlist automática com músicas dos meus artistas favoritos. Criada em ${dateStr}`,
-      public: false
-    }));
-    
-    const playlistId = playlist.body.id;
-    
-    // 4. Para cada artista, obter suas músicas mais populares
-    let tracks = [];
-    let allArtistsData = [];
-    let topArtistNames = [];
-    let foundArtists = [];
-    
-    for (const artist of topArtists.body.items) {
-      try {
-        topArtistNames.push(artist.name);
-        
-        const artistTracks = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
-        
-        // Adicionar até 5 músicas mais populares de cada artista
-        const topTracks = artistTracks.body.tracks.slice(0, 5);
-        const trackUris = topTracks.map(track => track.uri);
-        tracks = [...tracks, ...trackUris];
-        
-        // Salvar dados do artista para exibição
-        allArtistsData.push({
-          id: artist.id,
-          name: artist.name,
-          image: artist.images.length > 0 ? artist.images[0].url : null,
-          tracks: topTracks.map(track => ({
-            id: track.id,
-            name: track.name,
-            uri: track.uri,
-            duration_ms: track.duration_ms,
-            album: {
-              name: track.album.name,
-              image: track.album.images.length > 0 ? track.album.images[0].url : null
-            }
-          }))
-        });
-        
-        // Registrar o artista encontrado
-        foundArtists.push({
-          requestedName: artist.name, // Neste caso, o artista solicitado é o mesmo que o encontrado
-          id: artist.id,
-          name: artist.name
-        });
-      } catch (error) {
-        console.error(`Error processing top artist ${artist.name}:`, error);
-        allArtistsData.push({
-          name: artist.name,
-          error: true,
-          errorMessage: error.message || "Erro desconhecido"
-        });
-        foundArtists.push({
-          requestedName: artist.name,
-          error: true,
-          errorMessage: error.message || "Erro desconhecido"
-        });
-      }
-    }
-    
-    // 5. Adicionar músicas à playlist (limite de 100 por vez)
-    if (tracks.length > 0) {
-      // Spotify só permite adicionar 100 faixas por vez
-      for (let i = 0; i < tracks.length; i += 100) {
-        const chunk = tracks.slice(i, i + 100);
-        await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
-      }
-    }
-    
-    // Registrar a playlist criada
-    registerPlaylist({
-      id: playlist.body.id,
-      name: playlist.body.name,
-      description: playlist.body.description,
-      trackCount: tracks.length,
-      url: playlist.body.external_urls.spotify,
-      type: 'top_artists',
-      artistsCount: allArtistsData.length
-    }, userId, {
-      requestedArtists: topArtistNames,
-      foundArtists: foundArtists
-    });
-    
-    res.status(200).json({
-      success: true,
-      playlist: playlist.body,
-      artists: allArtistsData
-    });
-  } catch (err) {
-    console.error('Error creating playlist:', err);
-    res.status(400).json({ 
-      error: 'Error creating playlist',
-      details: err.message
-    });
-  }
-});
-
-// Admin route para visualizar usuários
-app.get('/admin/users', checkAdminAuth, (req, res) => {
-  res.json(users);
-});
-
-// Admin route para visualizar playlists
-app.get('/admin/playlists', checkAdminAuth, (req, res) => {
-  res.json(playlists);
-});
-
-// Admin route para visualizar dashboard
-app.get('/admin', checkAdminAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-
-// Admin route para visualizar detalhes de uma playlist específica
-app.get('/admin/playlist-details/:playlistId', checkAdminAuth, (req, res) => {
-  const { playlistId } = req.params;
-  const playlist = playlists.find(p => p.id === playlistId);
-  
-  if (!playlist) {
-    return res.status(404).json({ error: 'Playlist não encontrada' });
-  }
-  
-  res.json({
-    requestedArtists: playlist.requestedArtists || [],
-    foundArtists: playlist.foundArtists || []
-  });
-});
-
-// Refresh token route
-app.post('/refresh', async (req, res) => {
-  const { refresh_token } = req.body;
-  
-  if (!refresh_token) {
-    return res.status(400).json({ error: 'Refresh token is required' });
-  }
-  
-  spotifyApi.setRefreshToken(refresh_token);
-  
-  try {
-    const data = await spotifyApi.refreshAccessToken();
-    res.status(200).json({
-      access_token: data.body.access_token,
-      expires_in: data.body.expires_in
-    });
-  } catch (err) {
-    console.error('Error refreshing token:', err);
-    res.status(400).json({ error: 'Error refreshing token' });
-  }
-});
-
-// Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-}); 
+});
