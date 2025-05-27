@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const SpotifyWebApi = require('spotify-web-api-node');
 const path = require('path');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -13,11 +14,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Configurar agente HTTPS com timeout maior
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  timeout: 60000, // 60 segundos de timeout em vez do padrão
+  maxSockets: 10  // Limitar o número de conexões simultâneas
+});
+
 // Initialize Spotify API
 const spotifyApi = new SpotifyWebApi({
   clientId: process.env.SPOTIFY_CLIENT_ID,
   clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-  redirectUri: process.env.REDIRECT_URI
+  redirectUri: process.env.REDIRECT_URI,
+  // Usando o agente com timeout maior
+  requestOptions: {
+    agent: httpsAgent
+  }
 });
 
 // Home route
@@ -161,6 +173,40 @@ app.get('/artist-top-tracks/:artistId', async (req, res) => {
   }
 });
 
+// Função utilitária para tentativas com retry
+async function withRetry(fn, maxRetries = 3, delay = 1000) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      // Verificar se é um erro de rede (timeout, conexão recusada, etc.)
+      const isNetworkError = error.code === 'ETIMEDOUT' || 
+                            error.code === 'ENETUNREACH' || 
+                            error.code === 'ECONNREFUSED' ||
+                            error.code === 'ENOTFOUND';
+      
+      // Se não for erro de rede ou for a última tentativa, propagar o erro
+      if (!isNetworkError || attempt === maxRetries - 1) {
+        throw error;
+      }
+      
+      // Registrar a tentativa
+      console.log(`Tentativa ${attempt + 1} falhou. Tentando novamente em ${delay}ms...`);
+      lastError = error;
+      
+      // Esperar antes de tentar novamente
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Aumentar o delay para a próxima tentativa (backoff exponencial)
+      delay *= 2;
+    }
+  }
+  
+  throw lastError;
+}
+
 // Create playlist with custom artists
 app.post('/create-custom-playlist', async (req, res) => {
   try {
@@ -175,7 +221,7 @@ app.post('/create-custom-playlist', async (req, res) => {
     }
     
     // 1. Obter o ID do usuário
-    const userInfo = await spotifyApi.getMe();
+    const userInfo = await withRetry(() => spotifyApi.getMe());
     const userId = userInfo.body.id;
     
     // 2. Criar a playlist
@@ -183,11 +229,11 @@ app.post('/create-custom-playlist', async (req, res) => {
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     const playlistTitle = playlistName || `Playlist Personalizada (${dateStr})`;
     
-    const playlist = await spotifyApi.createPlaylist(userId, {
+    const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
       name: playlistTitle,
       description: `Playlist com músicas dos artistas selecionados. Criada em ${dateStr}`,
       public: false
-    });
+    }));
     
     const playlistId = playlist.body.id;
     
@@ -197,8 +243,8 @@ app.post('/create-custom-playlist', async (req, res) => {
     
     for (const artistName of artists) {
       try {
-        // Buscar o artista
-        const searchResult = await spotifyApi.searchArtists(artistName, { limit: 1 });
+        // Buscar o artista com retry
+        const searchResult = await withRetry(() => spotifyApi.searchArtists(artistName, { limit: 1 }));
         
         if (searchResult.body.artists.items.length === 0) {
           // Artista não encontrado
@@ -211,8 +257,8 @@ app.post('/create-custom-playlist', async (req, res) => {
         
         const artist = searchResult.body.artists.items[0];
         
-        // Obter faixas mais populares
-        const tracksResult = await spotifyApi.getArtistTopTracks(artist.id, 'BR');
+        // Obter faixas mais populares com retry
+        const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
         const limit = parseInt(tracksPerArtist, 10) || 5;
         const topTracks = tracksResult.body.tracks.slice(0, limit);
         
@@ -240,7 +286,8 @@ app.post('/create-custom-playlist', async (req, res) => {
         console.error(`Error processing artist "${artistName}":`, error);
         allArtistsData.push({
           name: artistName,
-          error: true
+          error: true,
+          errorMessage: error.message || "Erro desconhecido"
         });
       }
     }
@@ -250,7 +297,7 @@ app.post('/create-custom-playlist', async (req, res) => {
       // Spotify só permite adicionar 100 faixas por vez
       for (let i = 0; i < allTracks.length; i += 100) {
         const chunk = allTracks.slice(i, i + 100);
-        await spotifyApi.addTracksToPlaylist(playlistId, chunk);
+        await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
       }
     }
     
@@ -271,29 +318,28 @@ app.post('/create-custom-playlist', async (req, res) => {
 // Create playlist with top artists' tracks
 app.post('/create-artist-playlist', async (req, res) => {
   try {
-    // Obter token do cabeçalho Authorization
     if (!setTokenFromRequest(req)) {
       return res.status(401).json({ error: 'No token provided' });
     }
     
     // 1. Obter o ID do usuário
-    const userInfo = await spotifyApi.getMe();
+    const userInfo = await withRetry(() => spotifyApi.getMe());
     const userId = userInfo.body.id;
     
     // 2. Obter os artistas mais ouvidos
-    const topArtists = await spotifyApi.getMyTopArtists({ 
+    const topArtists = await withRetry(() => spotifyApi.getMyTopArtists({ 
       time_range: 'medium_term',
       limit: 10
-    });
+    }));
     
     // 3. Criar a playlist
     const date = new Date();
     const dateStr = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
-    const playlist = await spotifyApi.createPlaylist(userId, {
+    const playlist = await withRetry(() => spotifyApi.createPlaylist(userId, {
       name: `Meus Artistas Favoritos (${dateStr})`,
       description: `Playlist automática com músicas dos meus artistas favoritos. Criada em ${dateStr}`,
       public: false
-    });
+    }));
     
     const playlistId = playlist.body.id;
     
@@ -302,29 +348,38 @@ app.post('/create-artist-playlist', async (req, res) => {
     let allArtistsData = [];
     
     for (const artist of topArtists.body.items) {
-      const artistTracks = await spotifyApi.getArtistTopTracks(artist.id, 'BR');
-      
-      // Adicionar até 5 músicas mais populares de cada artista
-      const topTracks = artistTracks.body.tracks.slice(0, 5);
-      const trackUris = topTracks.map(track => track.uri);
-      tracks = [...tracks, ...trackUris];
-      
-      // Salvar dados do artista para exibição
-      allArtistsData.push({
-        id: artist.id,
-        name: artist.name,
-        image: artist.images.length > 0 ? artist.images[0].url : null,
-        tracks: topTracks.map(track => ({
-          id: track.id,
-          name: track.name,
-          uri: track.uri,
-          duration_ms: track.duration_ms,
-          album: {
-            name: track.album.name,
-            image: track.album.images.length > 0 ? track.album.images[0].url : null
-          }
-        }))
-      });
+      try {
+        const artistTracks = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
+        
+        // Adicionar até 5 músicas mais populares de cada artista
+        const topTracks = artistTracks.body.tracks.slice(0, 5);
+        const trackUris = topTracks.map(track => track.uri);
+        tracks = [...tracks, ...trackUris];
+        
+        // Salvar dados do artista para exibição
+        allArtistsData.push({
+          id: artist.id,
+          name: artist.name,
+          image: artist.images.length > 0 ? artist.images[0].url : null,
+          tracks: topTracks.map(track => ({
+            id: track.id,
+            name: track.name,
+            uri: track.uri,
+            duration_ms: track.duration_ms,
+            album: {
+              name: track.album.name,
+              image: track.album.images.length > 0 ? track.album.images[0].url : null
+            }
+          }))
+        });
+      } catch (error) {
+        console.error(`Error processing top artist ${artist.name}:`, error);
+        allArtistsData.push({
+          name: artist.name,
+          error: true,
+          errorMessage: error.message || "Erro desconhecido"
+        });
+      }
     }
     
     // 5. Adicionar músicas à playlist (limite de 100 por vez)
@@ -332,7 +387,7 @@ app.post('/create-artist-playlist', async (req, res) => {
       // Spotify só permite adicionar 100 faixas por vez
       for (let i = 0; i < tracks.length; i += 100) {
         const chunk = tracks.slice(i, i + 100);
-        await spotifyApi.addTracksToPlaylist(playlistId, chunk);
+        await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
       }
     }
     

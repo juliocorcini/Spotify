@@ -204,7 +204,7 @@ function renderPlaylistDetails(artists) {
             artistElement.innerHTML = `
                 <div class="artist-info">
                     <div class="artist-name">${artist.name}</div>
-                    <div class="artist-error">(Erro ao processar este artista)</div>
+                    <div class="artist-error">(Erro ao processar este artista: ${artist.errorMessage || 'Erro desconhecido'})</div>
                 </div>
             `;
             playlistArtists.appendChild(artistElement);
@@ -230,22 +230,29 @@ function renderPlaylistDetails(artists) {
         const trackList = document.createElement('ul');
         trackList.className = 'track-list';
         
-        artist.tracks.forEach(track => {
-            const trackItem = document.createElement('li');
-            trackItem.className = 'track-item';
-            
-            const albumImageSrc = track.album.image || 'https://placehold.co/50x50?text=No+Image';
-            trackItem.innerHTML = `
-                <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
-                <div class="track-details">
-                    <div class="track-name">${track.name}</div>
-                    <div class="track-album">${track.album.name}</div>
-                </div>
-                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
-            `;
-            
-            trackList.appendChild(trackItem);
-        });
+        if (!artist.tracks || artist.tracks.length === 0) {
+            const noTracksItem = document.createElement('li');
+            noTracksItem.className = 'no-tracks';
+            noTracksItem.textContent = 'Nenhuma faixa encontrada para este artista.';
+            trackList.appendChild(noTracksItem);
+        } else {
+            artist.tracks.forEach(track => {
+                const trackItem = document.createElement('li');
+                trackItem.className = 'track-item';
+                
+                const albumImageSrc = track.album.image || 'https://placehold.co/50x50?text=No+Image';
+                trackItem.innerHTML = `
+                    <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
+                    <div class="track-details">
+                        <div class="track-name">${track.name}</div>
+                        <div class="track-album">${track.album.name}</div>
+                    </div>
+                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+                `;
+                
+                trackList.appendChild(trackItem);
+            });
+        }
         
         // Adicionar tudo ao elemento do artista
         artistElement.appendChild(artistInfo);
