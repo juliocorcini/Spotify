@@ -396,14 +396,19 @@ function renderPlaylistDetails(artists, isPreview = false) {
         <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
         <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
     `;
-    playlistArtists.appendChild(bottomCreateButtonDiv);
     
-    // Adicionar event listeners
-    document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-    document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
-        playlistSection.classList.add('hidden');
-        profileSection.classList.remove('hidden');
-    });
+    // O botão só será adicionado após a seção de recomendações (se existir)
+    // Essa lógica é tratada após o carregamento das recomendações
+    if (!isPreview || document.querySelector('.recommendations-section') === null) {
+        playlistArtists.appendChild(bottomCreateButtonDiv);
+        
+        // Adicionar event listeners
+        document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
+        document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
+            playlistSection.classList.add('hidden');
+            profileSection.classList.remove('hidden');
+        });
+    }
 }
 
 // Função para carregar mais faixas de um artista
@@ -676,6 +681,22 @@ async function loadRecommendations(artists, limit = 10) {
         
         // Adicionar à lista de artistas
         playlistArtists.appendChild(recommendationsSection);
+        
+        // Adicionar o botão de criar playlist abaixo da seção de recomendações
+        const bottomCreateButtonDiv = document.createElement('div');
+        bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
+        bottomCreateButtonDiv.innerHTML = `
+            <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
+            <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
+        `;
+        playlistArtists.appendChild(bottomCreateButtonDiv);
+        
+        // Adicionar event listeners
+        document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
+        document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
+            playlistSection.classList.add('hidden');
+            profileSection.classList.remove('hidden');
+        });
         
     } catch (error) {
         console.error('Erro ao carregar recomendações:', error);
