@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spotify API Test</title>
+    <title>ArtistToPlaylist</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Spotify API Teste</h1>
+            <h1>ArtistToPlaylist</h1>
+            <p class="tagline">Crie playlists a partir dos seus artistas favoritos</p>
         </header>
         
         <main>
@@ -33,7 +34,44 @@
                 </div>
                 
                 <div class="actions">
-                    <button id="create-playlist-button" class="btn primary">Criar Playlist de Artistas Favoritos</button>
+                    <h3>Criar Playlist</h3>
+                    
+                    <div class="tabs">
+                        <button class="tab active" data-tab="manual">Adicionar Artistas Manualmente</button>
+                        <button class="tab" data-tab="top">Usar Meus Top Artistas</button>
+                    </div>
+                    
+                    <div class="tab-content" id="manual-tab">
+                        <form id="artists-form">
+                            <div class="form-group">
+                                <label for="artists-input">Artistas (um por linha):</label>
+                                <textarea id="artists-input" rows="8" placeholder="Digite o nome dos artistas, um por linha.&#10;Exemplo:&#10;The Beatles&#10;Queen&#10;Led Zeppelin"></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="tracks-per-artist">Músicas por artista:</label>
+                                <select id="tracks-per-artist">
+                                    <option value="3">3 músicas</option>
+                                    <option value="5" selected>5 músicas</option>
+                                    <option value="10">10 músicas</option>
+                                    <option value="15">15 músicas</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="playlist-name">Nome da Playlist:</label>
+                                <input type="text" id="playlist-name-input" placeholder="Minha Playlist Personalizada">
+                            </div>
+                            
+                            <button type="submit" id="create-custom-playlist-button" class="btn primary">Criar Playlist Personalizada</button>
+                        </form>
+                    </div>
+                    
+                    <div class="tab-content hidden" id="top-tab">
+                        <p>Crie uma playlist com as músicas mais populares dos seus artistas favoritos no Spotify.</p>
+                        <button id="create-playlist-button" class="btn primary">Criar Playlist de Artistas Favoritos</button>
+                    </div>
+                    
                     <p id="result-message" class="result-message hidden"></p>
                 </div>
             </section>
@@ -45,11 +83,18 @@
                     <p id="playlist-description"></p>
                     <a id="playlist-link" class="btn secondary" target="_blank">Abrir no Spotify</a>
                 </div>
+                
+                <div id="playlist-details">
+                    <h3>Conteúdo da Playlist</h3>
+                    <div id="playlist-artists"></div>
+                </div>
+                
+                <button id="back-to-profile" class="btn tertiary">Voltar</button>
             </section>
         </main>
         
         <footer>
-            <p>Aplicação de teste para API do Spotify</p>
+            <p>ArtistToPlaylist - Uma aplicação de integração com o Spotify</p>
         </footer>
     </div>
     

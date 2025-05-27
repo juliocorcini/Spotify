@@ -9,10 +9,18 @@ const userId = document.getElementById('user-id');
 const email = document.getElementById('email');
 const followers = document.getElementById('followers');
 const createPlaylistButton = document.getElementById('create-playlist-button');
+const createCustomPlaylistButton = document.getElementById('create-custom-playlist-button');
+const artistsInput = document.getElementById('artists-input');
+const tracksPerArtist = document.getElementById('tracks-per-artist');
+const playlistNameInput = document.getElementById('playlist-name-input');
 const resultMessage = document.getElementById('result-message');
 const playlistName = document.getElementById('playlist-name');
 const playlistDescription = document.getElementById('playlist-description');
 const playlistLink = document.getElementById('playlist-link');
+const playlistArtists = document.getElementById('playlist-artists');
+const backToProfileButton = document.getElementById('back-to-profile');
+const tabs = document.querySelectorAll('.tab');
+const tabContents = document.querySelectorAll('.tab-content');
 
 // Armazenar tokens
 let accessToken = '';
@@ -163,6 +171,91 @@ async function refreshAccessToken() {
     }
 }
 
+// Formatar duração de faixas
+function formatDuration(ms) {
+    const minutes = Math.floor(ms / 60000);
+    const seconds = ((ms % 60000) / 1000).toFixed(0);
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+// Renderizar artistas e faixas na página de playlist
+function renderPlaylistDetails(artists) {
+    playlistArtists.innerHTML = '';
+    
+    artists.forEach(artist => {
+        if (artist.notFound) {
+            // Artista não encontrado
+            const artistElement = document.createElement('div');
+            artistElement.className = 'artist-item';
+            artistElement.innerHTML = `
+                <div class="artist-info">
+                    <div class="artist-name">${artist.name}</div>
+                    <div class="artist-not-found">(Artista não encontrado)</div>
+                </div>
+            `;
+            playlistArtists.appendChild(artistElement);
+            return;
+        }
+        
+        if (artist.error) {
+            // Erro ao processar o artista
+            const artistElement = document.createElement('div');
+            artistElement.className = 'artist-item';
+            artistElement.innerHTML = `
+                <div class="artist-info">
+                    <div class="artist-name">${artist.name}</div>
+                    <div class="artist-error">(Erro ao processar este artista)</div>
+                </div>
+            `;
+            playlistArtists.appendChild(artistElement);
+            return;
+        }
+        
+        // Artista encontrado com faixas
+        const artistElement = document.createElement('div');
+        artistElement.className = 'artist-item';
+        
+        // Info do artista
+        const artistInfo = document.createElement('div');
+        artistInfo.className = 'artist-info';
+        
+        // Imagem do artista
+        const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
+        artistInfo.innerHTML = `
+            <img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">
+            <div class="artist-name">${artist.name}</div>
+        `;
+        
+        // Lista de faixas
+        const trackList = document.createElement('ul');
+        trackList.className = 'track-list';
+        
+        artist.tracks.forEach(track => {
+            const trackItem = document.createElement('li');
+            trackItem.className = 'track-item';
+            
+            const albumImageSrc = track.album.image || 'https://placehold.co/50x50?text=No+Image';
+            trackItem.innerHTML = `
+                <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
+                <div class="track-details">
+                    <div class="track-name">${track.name}</div>
+                    <div class="track-album">${track.album.name}</div>
+                </div>
+                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+            `;
+            
+            trackList.appendChild(trackItem);
+        });
+        
+        // Adicionar tudo ao elemento do artista
+        artistElement.appendChild(artistInfo);
+        artistElement.appendChild(trackList);
+        
+        // Adicionar à lista de artistas
+        playlistArtists.appendChild(artistElement);
+    });
+}
+
 // Criar playlist com músicas dos artistas favoritos
 async function createArtistPlaylist() {
     // Mostrar mensagem de carregamento
@@ -205,6 +298,9 @@ async function createArtistPlaylist() {
         playlistDescription.textContent = data.playlist.description;
         playlistLink.href = data.playlist.external_urls.spotify;
         
+        // Renderizar artistas e faixas
+        renderPlaylistDetails(data.artists);
+        
     } catch (error) {
         console.error('Error creating playlist:', error);
         resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
@@ -214,12 +310,119 @@ async function createArtistPlaylist() {
     }
 }
 
+// Criar playlist com artistas personalizados
+async function createCustomPlaylist(event) {
+    event.preventDefault();
+    
+    // Obter valores do formulário
+    const artistsText = artistsInput.value.trim();
+    if (!artistsText) {
+        resultMessage.textContent = 'Digite pelo menos um artista.';
+        resultMessage.classList.remove('hidden');
+        resultMessage.classList.add('error');
+        return;
+    }
+    
+    // Dividir por linha e remover linhas vazias
+    const artistsList = artistsText.split('\n')
+        .map(name => name.trim())
+        .filter(name => name.length > 0);
+    
+    if (artistsList.length === 0) {
+        resultMessage.textContent = 'Digite pelo menos um artista válido.';
+        resultMessage.classList.remove('hidden');
+        resultMessage.classList.add('error');
+        return;
+    }
+    
+    // Obter número de músicas e nome da playlist
+    const tracksCount = tracksPerArtist.value;
+    const customPlaylistName = playlistNameInput.value.trim();
+    
+    // Mostrar mensagem de carregamento
+    resultMessage.textContent = 'Criando playlist... Isso pode levar alguns segundos.';
+    resultMessage.classList.remove('hidden', 'success', 'error');
+    createCustomPlaylistButton.disabled = true;
+    
+    try {
+        const response = await fetch('/create-custom-playlist', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                artists: artistsList,
+                tracksPerArtist: tracksCount,
+                playlistName: customPlaylistName
+            })
+        });
+        
+        if (response.status === 401) {
+            // Token inválido, tentar refresh
+            await refreshAccessToken();
+            return createCustomPlaylist(event);
+        }
+        
+        if (!response.ok) {
+            throw new Error('Error creating custom playlist');
+        }
+        
+        const data = await response.json();
+        
+        // Mostrar mensagem de sucesso
+        resultMessage.textContent = 'Playlist criada com sucesso!';
+        resultMessage.classList.add('success');
+        
+        // Mostrar detalhes da playlist
+        profileSection.classList.add('hidden');
+        loginSection.classList.add('hidden');
+        playlistSection.classList.remove('hidden');
+        
+        playlistName.textContent = data.playlist.name;
+        playlistDescription.textContent = data.playlist.description;
+        playlistLink.href = data.playlist.external_urls.spotify;
+        
+        // Renderizar artistas e faixas
+        renderPlaylistDetails(data.artists);
+        
+    } catch (error) {
+        console.error('Error creating custom playlist:', error);
+        resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
+        resultMessage.classList.add('error');
+    } finally {
+        createCustomPlaylistButton.disabled = false;
+    }
+}
+
+// Alternar abas
+function switchTab(event) {
+    const tabId = event.target.getAttribute('data-tab');
+    
+    // Desativar todas as abas
+    tabs.forEach(tab => tab.classList.remove('active'));
+    tabContents.forEach(content => content.classList.add('hidden'));
+    
+    // Ativar a aba selecionada
+    event.target.classList.add('active');
+    document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+}
+
 // Event listeners
 loginButton.addEventListener('click', () => {
     window.location.href = '/login';
 });
 
 createPlaylistButton.addEventListener('click', createArtistPlaylist);
+
+createCustomPlaylistButton.addEventListener('click', createCustomPlaylist);
+
+backToProfileButton.addEventListener('click', showProfile);
+
+// Event listeners para as abas
+tabs.forEach(tab => {
+    tab.addEventListener('click', switchTab);
+});
 
 // Inicializar app
 document.addEventListener('DOMContentLoaded', checkAuth); 
