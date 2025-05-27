@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - ArtistToPlaylist</title>
+    <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+    <div class="admin-container">
+        <header>
+            <h1>ArtistToPlaylist - Admin</h1>
+            <p class="subtitle">Painel de Administração</p>
+        </header>
+        
+        <div class="stats-container">
+            <div class="stat-card">
+                <h3>Total de Usuários</h3>
+                <div class="stat-value" id="total-users">--</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Total de Playlists</h3>
+                <div class="stat-value" id="total-playlists">--</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Playlists Personalizadas</h3>
+                <div class="stat-value" id="custom-playlists">--</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Playlists de Top Artistas</h3>
+                <div class="stat-value" id="top-playlists">--</div>
+            </div>
+        </div>
+        
+        <div class="content-container">
+            <div class="tab-container">
+                <button class="tab-button active" data-tab="users">Usuários</button>
+                <button class="tab-button" data-tab="playlists">Playlists</button>
+            </div>
+            
+            <div class="tab-content">
+                <div class="tab-pane active" id="users-tab">
+                    <div class="controls">
+                        <input type="text" id="user-search" placeholder="Buscar usuário...">
+                        <div class="sort-controls">
+                            <label>Ordenar por:</label>
+                            <select id="user-sort">
+                                <option value="lastLogin">Último Login</option>
+                                <option value="firstLogin">Primeiro Login</option>
+                                <option value="displayName">Nome</option>
+                                <option value="id">ID</option>
+                            </select>
+                            <button id="user-sort-dir">↓</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>Foto</th>
+                                    <th>Nome</th>
+                                    <th>Email</th>
+                                    <th>País</th>
+                                    <th>Primeiro Login</th>
+                                    <th>Último Login</th>
+                                    <th>Playlists</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-body">
+                                <!-- Preenchido via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="tab-pane" id="playlists-tab">
+                    <div class="controls">
+                        <input type="text" id="playlist-search" placeholder="Buscar playlist...">
+                        <div class="sort-controls">
+                            <label>Ordenar por:</label>
+                            <select id="playlist-sort">
+                                <option value="createdAt">Data de Criação</option>
+                                <option value="name">Nome</option>
+                                <option value="trackCount">Nº de Faixas</option>
+                                <option value="type">Tipo</option>
+                            </select>
+                            <button id="playlist-sort-dir">↓</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table id="playlists-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Tipo</th>
+                                    <th>Artistas</th>
+                                    <th>Faixas</th>
+                                    <th>Criada em</th>
+                                    <th>Usuário</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="playlists-body">
+                                <!-- Preenchido via JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="modal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 id="modal-title">Detalhes</h2>
+                <div id="modal-body">
+                    <!-- Conteúdo dinâmico -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="admin.js"></script>
+</body>
+</html> 

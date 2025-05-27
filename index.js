@@ -4,6 +4,7 @@ const cors = require('cors');
 const SpotifyWebApi = require('spotify-web-api-node');
 const path = require('path');
 const https = require('https');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -31,6 +32,87 @@ const spotifyApi = new SpotifyWebApi({
     agent: httpsAgent
   }
 });
+
+// Caminhos para arquivos de dados
+const USERS_DATA_FILE = path.join(__dirname, 'data', 'users.json');
+const PLAYLISTS_DATA_FILE = path.join(__dirname, 'data', 'playlists.json');
+
+// Função para carregar dados do arquivo
+function loadData(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const data = fs.readFileSync(filePath, 'utf8');
+      return JSON.parse(data);
+    }
+    return [];
+  } catch (error) {
+    console.error(`Erro ao carregar dados de ${filePath}:`, error);
+    return [];
+  }
+}
+
+// Função para salvar dados no arquivo
+function saveData(filePath, data) {
+  try {
+    const dirPath = path.dirname(filePath);
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+    }
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    console.error(`Erro ao salvar dados em ${filePath}:`, error);
+  }
+}
+
+// Carregar dados existentes
+let users = loadData(USERS_DATA_FILE);
+let playlists = loadData(PLAYLISTS_DATA_FILE);
+
+// Função para registrar usuário
+function registerUser(userData) {
+  const existingUserIndex = users.findIndex(u => u.id === userData.id);
+  
+  if (existingUserIndex >= 0) {
+    // Atualizar usuário existente
+    users[existingUserIndex] = {
+      ...users[existingUserIndex],
+      ...userData,
+      lastLogin: new Date().toISOString()
+    };
+  } else {
+    // Adicionar novo usuário
+    users.push({
+      ...userData,
+      firstLogin: new Date().toISOString(),
+      lastLogin: new Date().toISOString()
+    });
+  }
+  
+  saveData(USERS_DATA_FILE, users);
+}
+
+// Função para registrar playlist
+function registerPlaylist(playlistData, userId) {
+  playlists.push({
+    ...playlistData,
+    userId,
+    createdAt: new Date().toISOString()
+  });
+  
+  saveData(PLAYLISTS_DATA_FILE, playlists);
+}
+
+// Verificar senha de admin (muito simples, só para exemplo)
+function checkAdminAuth(req, res, next) {
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const { password } = req.query;
+  
+  if (password === adminPassword) {
+    next();
+  } else {
+    res.status(401).send('Acesso não autorizado');
+  }
+}
 
 // Home route
 app.get('/', (req, res) => {
@@ -65,6 +147,23 @@ app.get('/callback', async (req, res) => {
     spotifyApi.setAccessToken(access_token);
     spotifyApi.setRefreshToken(refresh_token);
     
+    // Obter dados do usuário e salvar
+    try {
+      const userResult = await spotifyApi.getMe();
+      const userData = userResult.body;
+      
+      registerUser({
+        id: userData.id,
+        displayName: userData.display_name,
+        email: userData.email,
+        country: userData.country,
+        profileUrl: userData.external_urls.spotify,
+        imageUrl: userData.images && userData.images.length > 0 ? userData.images[0].url : null
+      });
+    } catch (error) {
+      console.error('Erro ao obter dados do usuário:', error);
+    }
+    
     // Redirecionar para o frontend com os tokens como parâmetros de URL
     res.redirect(`/?access_token=${access_token}&refresh_token=${refresh_token}&expires_in=${expires_in}`);
   } catch (err) {
@@ -72,6 +171,40 @@ app.get('/callback', async (req, res) => {
     res.redirect('/#/error/invalid token');
   }
 });
+
+// Função utilitária para tentativas com retry
+async function withRetry(fn, maxRetries = 3, delay = 1000) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      // Verificar se é um erro de rede (timeout, conexão recusada, etc.)
+      const isNetworkError = error.code === 'ETIMEDOUT' || 
+                            error.code === 'ENETUNREACH' || 
+                            error.code === 'ECONNREFUSED' ||
+                            error.code === 'ENOTFOUND';
+      
+      // Se não for erro de rede ou for a última tentativa, propagar o erro
+      if (!isNetworkError || attempt === maxRetries - 1) {
+        throw error;
+      }
+      
+      // Registrar a tentativa
+      console.log(`Tentativa ${attempt + 1} falhou. Tentando novamente em ${delay}ms...`);
+      lastError = error;
+      
+      // Esperar antes de tentar novamente
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Aumentar o delay para a próxima tentativa (backoff exponencial)
+      delay *= 2;
+    }
+  }
+  
+  throw lastError;
+}
 
 // Helper function to set token from request
 const setTokenFromRequest = (req) => {
@@ -173,40 +306,6 @@ app.get('/artist-top-tracks/:artistId', async (req, res) => {
   }
 });
 
-// Função utilitária para tentativas com retry
-async function withRetry(fn, maxRetries = 3, delay = 1000) {
-  let lastError;
-  
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      // Verificar se é um erro de rede (timeout, conexão recusada, etc.)
-      const isNetworkError = error.code === 'ETIMEDOUT' || 
-                            error.code === 'ENETUNREACH' || 
-                            error.code === 'ECONNREFUSED' ||
-                            error.code === 'ENOTFOUND';
-      
-      // Se não for erro de rede ou for a última tentativa, propagar o erro
-      if (!isNetworkError || attempt === maxRetries - 1) {
-        throw error;
-      }
-      
-      // Registrar a tentativa
-      console.log(`Tentativa ${attempt + 1} falhou. Tentando novamente em ${delay}ms...`);
-      lastError = error;
-      
-      // Esperar antes de tentar novamente
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      // Aumentar o delay para a próxima tentativa (backoff exponencial)
-      delay *= 2;
-    }
-  }
-  
-  throw lastError;
-}
-
 // Create playlist with custom artists
 app.post('/create-custom-playlist', async (req, res) => {
   try {
@@ -301,6 +400,17 @@ app.post('/create-custom-playlist', async (req, res) => {
       }
     }
     
+    // Registrar a playlist criada
+    registerPlaylist({
+      id: playlist.body.id,
+      name: playlist.body.name,
+      description: playlist.body.description,
+      trackCount: allTracks.length,
+      url: playlist.body.external_urls.spotify,
+      type: 'custom',
+      artistsCount: artists.length
+    }, userId);
+    
     res.status(200).json({
       success: true,
       playlist: playlist.body,
@@ -391,6 +501,17 @@ app.post('/create-artist-playlist', async (req, res) => {
       }
     }
     
+    // Registrar a playlist criada
+    registerPlaylist({
+      id: playlist.body.id,
+      name: playlist.body.name,
+      description: playlist.body.description,
+      trackCount: tracks.length,
+      url: playlist.body.external_urls.spotify,
+      type: 'top_artists',
+      artistsCount: allArtistsData.length
+    }, userId);
+    
     res.status(200).json({
       success: true,
       playlist: playlist.body,
@@ -403,6 +524,21 @@ app.post('/create-artist-playlist', async (req, res) => {
       details: err.message
     });
   }
+});
+
+// Admin route para visualizar usuários
+app.get('/admin/users', checkAdminAuth, (req, res) => {
+  res.json(users);
+});
+
+// Admin route para visualizar playlists
+app.get('/admin/playlists', checkAdminAuth, (req, res) => {
+  res.json(playlists);
+});
+
+// Admin route para visualizar dashboard
+app.get('/admin', checkAdminAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // Refresh token route

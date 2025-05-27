@@ -311,4 +311,19 @@ footer {
     color: #777;
     font-style: italic;
     padding: 15px 0;
+}
+
+.admin-link {
+    margin-top: 10px;
+    font-size: 0.8rem;
+}
+
+.admin-link a {
+    color: #999;
+    text-decoration: none;
+}
+
+.admin-link a:hover {
+    color: #1DB954;
+    text-decoration: underline;
 } 
