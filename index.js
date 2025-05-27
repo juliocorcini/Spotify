@@ -5,7 +5,6 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const path = require('path');
 const https = require('https');
 const fs = require('fs');
-const levenshtein = require('levenshtein');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
