@@ -31,6 +31,10 @@ let expiresIn = 0;
 // Armazenar dados da pré-visualização da playlist
 let previewPlaylistData = null;
 
+// Variável global para controlar o áudio atual
+let currentAudio = null;
+let currentPlayingElement = null;
+
 // Mostrar/esconder loader
 function showLoader() {
     loader.classList.remove('hidden');
@@ -223,19 +227,6 @@ function renderPlaylistDetails(artists, isPreview = false) {
         `;
         playlistArtists.appendChild(createButtonDiv);
         
-        // Adicionar instruções sobre formatos especiais de artistas
-        const specialFormatsInfo = document.createElement('div');
-        specialFormatsInfo.className = 'artist-formats-info';
-        specialFormatsInfo.innerHTML = `
-            <div class="info-title">Dicas para buscar artistas:</div>
-            <ul>
-                <li><strong>Artistas normais:</strong> Digite o nome do artista normalmente, ex: "ARGY", "Vintage Culture"</li>
-                <li><strong>Sets B2B (back-to-back):</strong> Digite com "B2B" entre os nomes dos artistas, ex: "DUBDOGZ B2B CAT DEALERS"</li>
-                <li><strong>Sets especiais:</strong> Digite o tipo do set/musica entre parênteses, ex: "VINTAGE CULTURE (FOR A FEELING)"</li>
-            </ul>
-        `;
-        playlistArtists.appendChild(specialFormatsInfo);
-        
         // Adicionar event listeners
         document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
         document.getElementById('cancel-create-playlist').addEventListener('click', () => {
@@ -252,273 +243,275 @@ function renderPlaylistDetails(artists, isPreview = false) {
         }, 0);
 
         if (recommendationsCount > 0) {
-            try {
-                loadRecommendations(artists, recommendationsCount);
-            } catch (error) {
-                console.error('Erro ao carregar recomendações:', error);
-            }
-        }
-    }
-    
-    artists.forEach(artist => {
-        if (artist.notFound) {
-            // Artista não encontrado
-            const artistElement = document.createElement('div');
-            artistElement.className = 'artist-item';
-            artistElement.innerHTML = `
-                <div class="artist-info">
-                    <div class="artist-name">${artist.name}</div>
-                    <div class="artist-not-found">(Artista não encontrado${artist.reason ? ': ' + artist.reason : ''})</div>
-                </div>
-            `;
-            playlistArtists.appendChild(artistElement);
-            return;
-        }
-        
-        if (artist.error) {
-            // Erro ao processar o artista
-            const artistElement = document.createElement('div');
-            artistElement.className = 'artist-item';
-            artistElement.innerHTML = `
-                <div class="artist-info">
-                    <div class="artist-name">${artist.name}</div>
-                    <div class="artist-error">(Erro ao processar este artista: ${artist.errorMessage || 'Erro desconhecido'})</div>
-                </div>
-            `;
-            playlistArtists.appendChild(artistElement);
-            return;
-        }
-        
-        // Artista encontrado com faixas
-        const artistElement = document.createElement('div');
-        artistElement.className = 'artist-item';
-        artistElement.dataset.artistId = artist.id;
-        
-        // Info do artista
-        const artistInfo = document.createElement('div');
-        artistInfo.className = 'artist-info';
-        
-        // Imagem do artista
-        const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
-        
-        // Adicionar aviso se o nome do artista não for exatamente o solicitado
-        const nameWarningHtml = artist.nameWarning ? 
-            `<div class="artist-name-warning">${artist.nameWarning}</div>` : '';
-        
-        // Adicionar info se for um formato especial (B2B ou Special Set)
-        let specialFormatHtml = '';
-        if (artist.isSpecialFormat) {
-            if (artist.specialInfo && artist.specialInfo.isB2B) {
-                specialFormatHtml = `<div class="artist-special-format">B2B Set (Conjunto de artistas)</div>`;
-            } else if (artist.specialInfo && artist.specialInfo.isSpecial) {
-                specialFormatHtml = `<div class="artist-special-format">Set Especial</div>`;
-            }
-        }
-        
-        artistInfo.innerHTML = `
-            <img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">
-            <div class="artist-details">
-                <div class="artist-name">${artist.name}</div>
-                ${nameWarningHtml}
-                ${specialFormatHtml}
-            </div>
-        `;
-        
-        // Adicionar controles do artista (botões)
-        const artistControls = document.createElement('div');
-        artistControls.className = 'artist-controls';
-        artistControls.innerHTML = `
-            <button class="toggle-all-btn" data-action="select-all">Marcar Todas</button>
-            <button class="toggle-all-btn" data-action="unselect-all">Desmarcar Todas</button>
-            <button class="load-more-btn">Carregar Mais Músicas</button>
-            <button class="search-track-btn">Buscar Música</button>
-        `;
-
-        // Campo de busca (inicialmente oculto)
-        const searchContainer = document.createElement('div');
-        searchContainer.className = 'track-search-container';
-        searchContainer.innerHTML = `
-            <input type="text" placeholder="Digite o nome da música..." class="track-search-input">
-            <button class="track-search-execute">Buscar</button>
-        `;
-        
-        // Lista de faixas
-        const trackList = document.createElement('ul');
-        trackList.className = 'track-list';
-        
-        if (!artist.tracks || artist.tracks.length === 0) {
-            const noTracksItem = document.createElement('li');
-            noTracksItem.className = 'no-tracks';
-            noTracksItem.textContent = 'Nenhuma faixa encontrada para este artista.';
-            trackList.appendChild(noTracksItem);
-        } else {
-            artist.tracks.forEach(track => {
-                const trackItem = document.createElement('li');
-                trackItem.className = 'track-item';
-                trackItem.dataset.trackUri = track.uri;
-                trackItem.dataset.trackId = track.id;
-                
-                const albumImageSrc = track.album.image || 'https://placehold.co/50x50?text=No+Image';
-                trackItem.innerHTML = `
-                    <input type="checkbox" class="track-checkbox" checked>
-                    <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
-                    <div class="track-details">
-                        <div class="track-name">${track.name}</div>
-                        <div class="track-album">${track.album.name}</div>
+            const recommendationsSection = document.createElement('div');
+            recommendationsSection.className = 'recommendations-section';
+            recommendationsSection.innerHTML = `
+                <div class="recommendations-title">
+                    <h3>🎵 Músicas Recomendadas</h3>
+                    <div class="recommendations-info">
+                        <p>Baseado nos seus artistas favoritos, encontramos ${recommendationsCount} recomendações para você!</p>
+                        <button id="load-recommendations" class="btn secondary">Carregar Recomendações</button>
                     </div>
-                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
-                `;
-                
-                trackList.appendChild(trackItem);
+                </div>
+                <div id="recommendations-list" class="hidden"></div>
+            `;
+            playlistArtists.appendChild(recommendationsSection);
+            
+            // Event listener para carregar recomendações
+            document.getElementById('load-recommendations').addEventListener('click', async () => {
+                await loadRecommendations(artists);
             });
         }
         
-        // Adicionar tudo ao elemento do artista
-        artistElement.appendChild(artistInfo);
-        artistElement.appendChild(artistControls);
-        artistElement.appendChild(searchContainer);
-        artistElement.appendChild(trackList);
-        
-        // Event listeners para os botões
-        artistElement.querySelector('.load-more-btn').addEventListener('click', () => {
-            if (artist.isSpecialFormat) {
-                // Para formatos especiais, usar o endpoint específico
-                loadMoreSpecialTracks(artist.id, trackList, artist.name, artist.originalName, artist.specialInfo);
-            } else {
-                // Para artistas normais, usar o endpoint padrão
-                loadMoreTracks(artist.id, trackList, artist.name);
-            }
-        });
-
-        artistElement.querySelector('.search-track-btn').addEventListener('click', () => {
-            const searchContainer = artistElement.querySelector('.track-search-container');
-            searchContainer.classList.toggle('visible');
-            if (searchContainer.classList.contains('visible')) {
-                searchContainer.querySelector('input').focus();
-            }
-        });
-
-        artistElement.querySelector('.track-search-execute').addEventListener('click', () => {
-            const searchInput = artistElement.querySelector('.track-search-input');
-            searchTracksByName(artist.id, searchInput.value, trackList);
-        });
-
-        artistElement.querySelector('.track-search-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const searchInput = artistElement.querySelector('.track-search-input');
-                searchTracksByName(artist.id, searchInput.value, trackList);
-            }
-        });
-
-        // Event listeners para os botões de marcar/desmarcar todas
-        artistElement.querySelector('[data-action="select-all"]').addEventListener('click', () => {
-            const checkboxes = artistElement.querySelectorAll('.track-checkbox');
-            checkboxes.forEach(checkbox => checkbox.checked = true);
-        });
-
-        artistElement.querySelector('[data-action="unselect-all"]').addEventListener('click', () => {
-            const checkboxes = artistElement.querySelectorAll('.track-checkbox');
-            checkboxes.forEach(checkbox => checkbox.checked = false);
-        });
-        
-        // Adicionar à lista de artistas
-        playlistArtists.appendChild(artistElement);
-    });
-
-    // O botão só será adicionado após a seção de recomendações (se existir)
-    // Essa lógica é tratada após o carregamento das recomendações
-    if (!isPreview || document.querySelector('.recommendations-section') === null) {
-        // Adicionar botão de criar playlist no final da página
-        const bottomCreateButtonDiv = document.createElement('div');
-        bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
-        bottomCreateButtonDiv.innerHTML = `
-            <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
-            <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
+        // Adicionar o botão "Voltar para criar playlist" na parte inferior
+        const bottomCreateAction = document.createElement('div');
+        bottomCreateAction.className = 'bottom-create-action';
+        bottomCreateAction.innerHTML = `
+            <button id="bottom-back-to-create" class="btn tertiary">← Voltar para criar playlist</button>
         `;
-        playlistArtists.appendChild(bottomCreateButtonDiv);
+        playlistArtists.appendChild(bottomCreateAction);
         
-        // Adicionar event listeners
-        document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-        document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
+        // Event listener para o botão inferior
+        document.getElementById('bottom-back-to-create').addEventListener('click', () => {
             playlistSection.classList.add('hidden');
             profileSection.classList.remove('hidden');
         });
     }
+    
+    // Renderizar cada artista
+    artists.forEach((artist, index) => {
+        const artistElement = document.createElement('div');
+        artistElement.className = 'artist-item';
+        
+        if (artist.notFound) {
+            artistElement.innerHTML = `
+                <div class="artist-not-found">
+                    <h3>❌ ${artist.name}</h3>
+                    <p>Artista não encontrado no Spotify</p>
+                </div>
+            `;
+        } else if (artist.error) {
+            artistElement.innerHTML = `
+                <div class="artist-not-found">
+                    <h3>⚠️ ${artist.name}</h3>
+                    <p>Erro: ${artist.errorMessage}</p>
+                </div>
+            `;
+        } else {
+            // Determinar se é B2B para mostrar imagens duplas
+            let artistImageHtml = '';
+            if (artist.isB2B && artist.allArtists && artist.allArtists.length >= 2) {
+                // Para B2B, mostrar fotos dos dois artistas lado a lado
+                const artist1 = artist.allArtists[0];
+                const artist2 = artist.allArtists[1];
+                const img1 = artist1.images && artist1.images.length > 0 ? artist1.images[0].url : '/default-artist.png';
+                const img2 = artist2.images && artist2.images.length > 0 ? artist2.images[0].url : '/default-artist.png';
+                
+                artistImageHtml = `
+                    <div class="artist-b2b-images">
+                        <img src="${img1}" alt="${artist1.name}" class="artist-image-small">
+                        <img src="${img2}" alt="${artist2.name}" class="artist-image-small">
+                    </div>
+                `;
+            } else {
+                // Artista normal ou especial - uma foto só
+                const imageUrl = artist.image || '/default-artist.png';
+                artistImageHtml = `<img src="${imageUrl}" alt="${artist.name}" class="artist-image">`;
+            }
+            
+            artistElement.innerHTML = `
+                <div class="artist-info">
+                    ${artistImageHtml}
+                    <div class="artist-details">
+                        <h3 class="artist-name">${artist.name}</h3>
+                        ${artist.isB2B ? '<span class="artist-b2b-tag">🎧 B2B Set</span>' : ''}
+                        ${artist.isSpecial ? '<span class="artist-special-tag">⭐ Set Especial</span>' : ''}
+                        ${artist.nameWarning ? `<p class="artist-name-warning">${artist.nameWarning}</p>` : ''}
+                        <p class="track-count">${artist.tracks.length} música(s)</p>
+                    </div>
+                </div>
+                <div class="track-list" id="track-list-${index}">
+                    ${artist.tracks.map((track, trackIndex) => {
+                        // Para cada música, mostrar de qual artista ela vem
+                        let artistInfo = '';
+                        if (track.artists && track.artists.length > 0) {
+                            const mainArtist = track.artists[0].name;
+                            const allArtists = track.artists.map(a => a.name).join(', ');
+                            artistInfo = `<span class="track-artist-info">🎤 ${allArtists}</span>`;
+                        }
+                        
+                        return `
+                            <div class="track-item">
+                                <input type="checkbox" class="track-checkbox" id="track-${index}-${trackIndex}" data-uri="${track.uri}" checked>
+                                <img src="${track.album && track.album.image ? track.album.image : (track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : '/default-track.png')}" 
+                                     alt="${track.name}" 
+                                     class="track-image ${track.preview_url ? 'playable' : ''}"
+                                     ${track.preview_url ? `onclick="togglePreview('${track.preview_url}', this)"` : ''}
+                                     title="${track.preview_url ? 'Clique para ouvir uma prévia' : 'Prévia não disponível'}">
+                                <div class="track-details">
+                                    <div class="track-name">${track.name}</div>
+                                    ${artistInfo}
+                                    <div class="track-album">${track.album ? track.album.name : 'Album desconhecido'}</div>
+                                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div class="artist-controls">
+                    <button class="load-more-btn" onclick="loadMoreTracks('${artist.id}', 'track-list-${index}', '${artist.name.replace(/'/g, "\\'")}', '${artist.originalName}', ${artist.isB2B || false}, ${artist.isSpecial || false})">
+                        Carregar mais músicas
+                    </button>
+                    <div class="track-search-container" id="search-container-${index}">
+                        <input type="text" placeholder="Buscar música específica..." id="search-input-${index}">
+                        <button onclick="searchTracksByName('${artist.id}', 'search-input-${index}', 'track-list-${index}')">🔍</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        playlistArtists.appendChild(artistElement);
+    });
 }
 
-// Função para carregar mais faixas de um artista
-async function loadMoreTracks(artistId, trackListElement, artistName) {
+// Função para tocar/pausar preview das músicas
+function togglePreview(previewUrl, imageElement) {
+    // Se já há um áudio tocando e é o mesmo elemento, pausar
+    if (currentAudio && currentPlayingElement === imageElement) {
+        currentAudio.pause();
+        currentAudio = null;
+        currentPlayingElement = null;
+        imageElement.classList.remove('playing');
+        return;
+    }
+    
+    // Se há outro áudio tocando, pausar
+    if (currentAudio) {
+        currentAudio.pause();
+        if (currentPlayingElement) {
+            currentPlayingElement.classList.remove('playing');
+        }
+    }
+    
+    // Criar novo áudio e tocar
+    currentAudio = new Audio(previewUrl);
+    currentPlayingElement = imageElement;
+    imageElement.classList.add('playing');
+    
+    // Configurar eventos do áudio
+    currentAudio.addEventListener('ended', () => {
+        imageElement.classList.remove('playing');
+        currentAudio = null;
+        currentPlayingElement = null;
+    });
+    
+    currentAudio.addEventListener('error', () => {
+        imageElement.classList.remove('playing');
+        currentAudio = null;
+        currentPlayingElement = null;
+        alert('Erro ao reproduzir a prévia desta música.');
+    });
+    
+    // Tocar o áudio
+    currentAudio.play().catch(error => {
+        console.error('Error playing preview:', error);
+        imageElement.classList.remove('playing');
+        currentAudio = null;
+        currentPlayingElement = null;
+        alert('Não foi possível reproduzir a prévia desta música.');
+    });
+}
+
+// Atualizar a função loadMoreTracks para lidar com B2B
+async function loadMoreTracks(artistId, trackListElementId, artistName, originalName, isB2B, isSpecial) {
     try {
         showLoader();
         
-        // Obter IDs das faixas já exibidas para evitar duplicação
-        const existingTrackIds = Array.from(trackListElement.querySelectorAll('.track-item'))
-            .map(item => item.dataset.trackId);
+        let response;
         
-        // Tentar buscar mais faixas do artista baseadas no gosto do usuário
-        const response = await fetch(`/personalized-artist-tracks/${artistId}?offset=${existingTrackIds.length}&limit=10`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
-        
-        // Se não tivermos faixas personalizadas ou ocorrer erro, buscar faixas normais
-        let data;
-        if (!response.ok) {
-            console.log('Faixas personalizadas não disponíveis, buscando faixas populares');
+        if (isB2B || isSpecial) {
+            // Para B2B e sets especiais, usar o endpoint específico
+            const searchTerms = JSON.stringify([originalName]); // Simplificado para esta implementação
+            const limit = isB2B ? 20 : 10; // Dobrar para B2B
             
-            // Buscar mais faixas do artista (normal)
-            const regularResponse = await fetch(`/artist-tracks/${artistId}?offset=${existingTrackIds.length}&limit=10`, {
+            response = await fetch(`/artist-special-tracks/${artistId}?limit=${limit}&displayName=${encodeURIComponent(originalName)}&searchTerms=${encodeURIComponent(searchTerms)}`, {
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
                 }
             });
-            
-            if (!regularResponse.ok) {
-                throw new Error(`Erro ao buscar mais músicas para ${artistName}`);
-            }
-            
-            data = await regularResponse.json();
         } else {
-            data = await response.json();
+            // Para artistas normais
+            response = await fetch(`/personalized-artist-tracks/${artistId}?limit=10&offset=10`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                }
+            });
         }
         
-        // Filtrar faixas que já estão na lista
-        const newTracks = data.tracks.filter(track => !existingTrackIds.includes(track.id));
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
-        if (newTracks.length === 0) {
-            alert('Não há mais músicas disponíveis para este artista.');
+        const data = await response.json();
+        const tracks = data.tracks || [];
+        
+        if (tracks.length === 0) {
+            hideLoader();
+            alert('Nenhuma música adicional encontrada para este artista.');
             return;
         }
         
-        // Adicionar novas faixas à lista
-        newTracks.forEach(track => {
-            const trackItem = document.createElement('li');
-            trackItem.className = 'track-item';
-            trackItem.dataset.trackUri = track.uri;
-            trackItem.dataset.trackId = track.id;
+        // Encontrar o elemento da lista de faixas
+        const trackListElement = document.getElementById(trackListElementId);
+        if (!trackListElement) {
+            hideLoader();
+            console.error('Track list element not found:', trackListElementId);
+            return;
+        }
+        
+        // Encontrar o índice atual para os checkboxes
+        const existingTracks = trackListElement.querySelectorAll('.track-item');
+        let nextIndex = existingTracks.length;
+        
+        // Obter o índice do artista a partir do ID da lista
+        const artistIndex = trackListElementId.split('-')[2]; // track-list-X
+        
+        // Adicionar as novas faixas
+        tracks.forEach((track, trackIndex) => {
+            // Para cada música, mostrar de qual artista ela vem
+            let artistInfo = '';
+            if (track.artists && track.artists.length > 0) {
+                const allArtists = track.artists.map(a => a.name).join(', ');
+                artistInfo = `<span class="track-artist-info">🎤 ${allArtists}</span>`;
+            }
             
-            const albumImageSrc = track.album?.images?.length > 0 ? 
-                track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
-            
-            trackItem.innerHTML = `
-                <input type="checkbox" class="track-checkbox">
-                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+            const trackElement = document.createElement('div');
+            trackElement.className = 'track-item';
+            trackElement.innerHTML = `
+                <input type="checkbox" class="track-checkbox" id="track-${artistIndex}-${nextIndex + trackIndex}" data-uri="${track.uri}" checked>
+                <img src="${track.album && track.album.image ? track.album.image : (track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : '/default-track.png')}" 
+                     alt="${track.name}" 
+                     class="track-image ${track.preview_url ? 'playable' : ''}"
+                     ${track.preview_url ? `onclick="togglePreview('${track.preview_url}', this)"` : ''}
+                     title="${track.preview_url ? 'Clique para ouvir uma prévia' : 'Prévia não disponível'}">
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
-                    <div class="track-album">${track.album?.name || ''}</div>
+                    ${artistInfo}
+                    <div class="track-album">${track.album ? track.album.name : 'Album desconhecido'}</div>
+                    <div class="track-duration">${formatDuration(track.duration_ms)}</div>
                 </div>
-                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
             
-            trackListElement.appendChild(trackItem);
+            trackListElement.appendChild(trackElement);
         });
         
-    } catch (error) {
-        console.error('Erro ao carregar mais músicas:', error);
-        alert(`Erro ao carregar mais músicas: ${error.message}`);
-    } finally {
         hideLoader();
+        showResult(`${tracks.length} músicas adicionais carregadas para ${artistName}!`, 'success');
+        
+    } catch (error) {
+        hideLoader();
+        console.error('Error loading more tracks:', error);
+        showResult('Erro ao carregar mais músicas. Tente novamente.', 'error');
     }
 }
 
@@ -1019,202 +1012,104 @@ async function previewTopArtists() {
 async function previewCustomArtists(event) {
     event.preventDefault();
     
-    // Obter valores do formulário
-    const artistsText = artistsInput.value.trim();
-    if (!artistsText) {
-        resultMessage.textContent = 'Digite pelo menos um artista.';
-        resultMessage.classList.remove('hidden');
-        resultMessage.classList.add('error');
-        return;
-    }
-    
-    // Dividir por linha e remover linhas vazias
-    const artistsList = artistsText.split('\n')
-        .map(name => name.trim())
-        .filter(name => name.length > 0);
-    
-    if (artistsList.length === 0) {
-        resultMessage.textContent = 'Digite pelo menos um artista válido.';
-        resultMessage.classList.remove('hidden');
-        resultMessage.classList.add('error');
-        return;
-    }
-    
-    // Obter número de músicas e nome da playlist
-    const tracksCount = tracksPerArtist.value;
-    const customPlaylistName = playlistNameInput.value.trim() || 'Minha Playlist Personalizada';
-    
     showLoader();
     
+    const artistNames = document.getElementById('artists-input').value
+        .split('\n')
+        .map(name => name.trim())
+        .filter(name => name);
+    
+    if (artistNames.length === 0) {
+        hideLoader();
+        showResult('Por favor, insira pelo menos um artista.', 'error');
+        return;
+    }
+    
+    const tracksPerArtist = document.getElementById('tracks-per-artist');
+    const playlistName = document.getElementById('playlist-name-input').value.trim();
+    
     try {
-        // Preparar dados para pré-visualização
-        const previewArtists = [];
+        let artistsData = [];
         
-        for (const artistName of artistsList) {
+        for (const artistName of artistNames) {
             try {
-                // Verificar se é um formato especial (B2B ou special set)
-                if (isSpecialArtistFormat(artistName)) {
-                    // Usar o endpoint especial para buscar artistas especiais
-                    const searchResponse = await fetch(`/search-artist-special?query=${encodeURIComponent(artistName)}`, {
+                const response = await fetch(`/search-artist-special?query=${encodeURIComponent(artistName)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.primaryArtist) {
+                    const artist = data.primaryArtist;
+                    
+                    // Determinar quantas músicas buscar baseado no tipo
+                    let trackLimit = parseInt(tracksPerArtist.value) || 5;
+                    if (artist.isB2B) {
+                        trackLimit = trackLimit * 2; // Dobrar para B2B
+                    }
+                    
+                    // Buscar faixas específicas para artistas especiais
+                    const tracksResponse = await fetch(`/artist-special-tracks/${artist.id}?limit=${trackLimit}&displayName=${encodeURIComponent(artist.displayName)}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`, {
                         headers: {
-                            'Authorization': `Bearer ${accessToken}`
+                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
                         }
                     });
                     
-                    if (!searchResponse.ok) {
-                        throw new Error(`Error searching for ${artistName}`);
-                    }
-                    
-                    const searchData = await searchResponse.json();
-                    
-                    if (!searchData.primaryArtist) {
-                        // Artista não encontrado
-                        previewArtists.push({
-                            name: artistName,
-                            notFound: true
-                        });
-                        continue;
-                    }
-                    
-                    const artist = searchData.primaryArtist;
-                    
-                    // Usar o endpoint especial para buscar faixas
-                    const tracksResponse = await fetch(
-                        `/artist-special-tracks/${artist.id}?displayName=${encodeURIComponent(artist.displayName)}&limit=${tracksCount}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`,
-                        {
-                            headers: {
-                                'Authorization': `Bearer ${accessToken}`
-                            }
-                        }
-                    );
-                    
                     if (!tracksResponse.ok) {
-                        throw new Error(`Error fetching tracks for ${artistName}`);
+                        throw new Error(`HTTP error! status: ${tracksResponse.status}`);
                     }
                     
                     const tracksData = await tracksResponse.json();
                     
-                    previewArtists.push({
+                    artistsData.push({
                         id: artist.id,
-                        name: artist.displayName || artist.name,
-                        originalName: artistName,
+                        name: artist.displayName,
+                        originalName: artist.originalName,
+                        isB2B: artist.isB2B,
+                        isSpecial: artist.isSpecial,
+                        searchTerms: artist.searchTerms,
                         image: artist.images && artist.images.length > 0 ? artist.images[0].url : null,
-                        tracks: tracksData.tracks.map(track => ({
-                            id: track.id,
-                            name: track.name,
-                            uri: track.uri,
-                            duration_ms: track.duration_ms,
-                            album: {
-                                name: track.album.name,
-                                image: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
-                            }
-                        })),
-                        isSpecialFormat: true,
-                        specialInfo: {
-                            isB2B: artist.isB2B,
-                            isSpecial: artist.isSpecial
-                        }
+                        tracks: tracksData.tracks || [],
+                        allArtists: data.allResults || [] // Para B2B, guardar informações de ambos artistas
                     });
                 } else {
-                    // Buscar artista normal
-                    const searchResponse = await fetch(`/search-artist?query=${encodeURIComponent(artistName)}`, {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        }
-                    });
-                    
-                    if (!searchResponse.ok) {
-                        throw new Error(`Error searching for ${artistName}`);
-                    }
-                    
-                    const searchData = await searchResponse.json();
-                    
-                    if (searchData.artists.items.length === 0) {
-                        // Artista não encontrado
-                        previewArtists.push({
-                            name: artistName,
-                            notFound: true
-                        });
-                        continue;
-                    }
-                    
-                    // Encontrar o artista mais próximo usando a função compareNames
-                    const artist = findBestArtistMatch(artistName, searchData.artists.items);
-                    
-                    // Se não encontrou um artista suficientemente similar
-                    if (!artist) {
-                        previewArtists.push({
-                            name: artistName,
-                            notFound: true,
-                            reason: "Não foi possível encontrar este artista com exatidão suficiente."
-                        });
-                        continue;
-                    }
-                    
-                    // Verificar se o nome é exatamente o mesmo (ignorando case e espaços)
-                    const exactMatch = artist.name.toLowerCase().trim() === artistName.toLowerCase().trim();
-                    const nameWarning = !exactMatch ? 
-                        `Aviso: Encontrado "${artist.name}" em vez de "${artistName}"` : null;
-                    
-                    // Obter as faixas mais populares do artista
-                    const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        }
-                    });
-                    
-                    if (!tracksResponse.ok) {
-                        throw new Error(`Error fetching tracks for ${artistName}`);
-                    }
-                    
-                    const tracksData = await tracksResponse.json();
-                    
-                    previewArtists.push({
-                        id: artist.id,
-                        name: artist.name,
-                        image: artist.images.length > 0 ? artist.images[0].url : null,
-                        nameWarning: nameWarning,
+                    // Artista não encontrado
+                    artistsData.push({
+                        name: artistName,
                         originalName: artistName,
-                        tracks: tracksData.tracks.map(track => ({
-                            id: track.id,
-                            name: track.name,
-                            uri: track.uri,
-                            duration_ms: track.duration_ms,
-                            album: {
-                                name: track.album.name,
-                                image: track.album.images.length > 0 ? track.album.images[0].url : null
-                            }
-                        }))
+                        notFound: true
                     });
                 }
             } catch (error) {
-                console.error(`Error processing artist ${artistName}:`, error);
-                previewArtists.push({
+                console.error(`Error processing artist "${artistName}":`, error);
+                artistsData.push({
                     name: artistName,
+                    originalName: artistName,
                     error: true,
-                    errorMessage: error.message || "Erro desconhecido"
+                    errorMessage: error.message
                 });
             }
         }
         
-        // Armazenar dados para criar a playlist depois
-        previewPlaylistData = {
-            type: 'custom',
-            artists: previewArtists,
-            tracksPerArtist: tracksCount,
-            playlistName: customPlaylistName
-        };
+        hideLoader();
         
-        // Mostrar prévia
-        showPlaylistPreview(`Prévia - ${customPlaylistName}`, "Estas faixas serão adicionadas à sua playlist.");
+        // Mostrar preview da playlist
+        const title = playlistName || `Playlist Personalizada (${new Date().toLocaleDateString()})`;
+        const description = `Playlist com ${artistsData.length} artista(s) selecionado(s)`;
+        
+        showPlaylistPreview(title, description);
+        renderPlaylistDetails(artistsData, true);
         
     } catch (error) {
-        console.error('Error previewing custom artists:', error);
-        resultMessage.textContent = 'Erro ao carregar artistas. Tente novamente.';
-        resultMessage.classList.remove('hidden');
-        resultMessage.classList.add('error');
-    } finally {
         hideLoader();
+        console.error('Error creating playlist:', error);
+        showResult('Erro ao criar playlist. Tente novamente.', 'error');
     }
 }
 
@@ -1236,107 +1131,75 @@ function showPlaylistPreview(title, description) {
 
 // Confirmar criação da playlist após prévia
 async function confirmCreatePlaylist() {
-    if (!previewPlaylistData) return;
-    
-    showLoader();
-    
     try {
-        // Obter todas as faixas selecionadas pelo usuário
-        const selectedTracks = Array.from(document.querySelectorAll('.track-checkbox:checked'))
-            .map(checkbox => checkbox.closest('.track-item').dataset.trackUri);
+        showLoader();
+        
+        // Coletar todas as faixas selecionadas
+        const selectedTracks = [];
+        const checkboxes = document.querySelectorAll('.track-checkbox:checked');
+        
+        checkboxes.forEach(checkbox => {
+            const trackUri = checkbox.getAttribute('data-uri');
+            if (trackUri) {
+                selectedTracks.push(trackUri);
+            }
+        });
         
         if (selectedTracks.length === 0) {
-            alert('Selecione pelo menos uma música para criar a playlist.');
             hideLoader();
+            showResult('Selecione pelo menos uma música para criar a playlist.', 'error');
             return;
         }
         
-        let response;
+        // Obter o nome da playlist
+        const playlistName = document.getElementById('playlist-name-input').value.trim() || 
+                           `Playlist Personalizada (${new Date().toLocaleDateString()})`;
         
-        if (previewPlaylistData.type === 'top') {
-            // Criar playlist com top artistas, mas usando as faixas selecionadas
-            response = await fetch('/create-custom-tracks-playlist', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    trackUris: selectedTracks,
-                    playlistName: 'Meus Artistas Favoritos'
-                })
-            });
-        } else {
-            // Criar playlist com artistas personalizados, mas usando as faixas selecionadas
-            response = await fetch('/create-custom-tracks-playlist', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    trackUris: selectedTracks,
-                    playlistName: previewPlaylistData.playlistName
-                })
-            });
-        }
-        
-        if (response.status === 401) {
-            // Token inválido, tentar refresh
-            await refreshAccessToken();
-            return confirmCreatePlaylist();
-        }
+        // Criar a playlist com as faixas selecionadas
+        const response = await fetch('/create-custom-tracks-playlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            body: JSON.stringify({
+                trackUris: selectedTracks,
+                playlistName: playlistName
+            })
+        });
         
         if (!response.ok) {
-            throw new Error('Erro ao criar playlist');
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const data = await response.json();
+        const result = await response.json();
         
-        // Mostrar mensagem de sucesso
-        resultMessage.textContent = 'Playlist criada com sucesso!';
-        resultMessage.classList.remove('hidden');
-        resultMessage.classList.add('success');
-        
-        // Atualizar a UI com a playlist criada
-        playlistName.textContent = data.playlist.name;
-        playlistDescription.textContent = data.playlist.description;
-        playlistLink.textContent = "Abrir no Spotify";
-        playlistLink.href = data.playlist.external_urls.spotify;
-        playlistLink.classList.remove('hidden');
-        
-        // Rolar para o topo da página após criar a playlist
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        
-        // Criar botão para copiar link da playlist
-        if (!document.getElementById('copy-playlist-link')) {
-            const copyLinkButton = document.createElement('a');
-            copyLinkButton.id = 'copy-playlist-link';
-            copyLinkButton.className = 'btn secondary';
-            copyLinkButton.textContent = "Copiar Link";
-            copyLinkButton.href = "#";
-            copyLinkButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                navigator.clipboard.writeText(data.playlist.external_urls.spotify)
-                    .then(() => {
-                        alert('Link copiado para a área de transferência!');
-                    })
-                    .catch(err => {
-                        console.error('Erro ao copiar link:', err);
-                    });
-            });
-            
-            // Inserir o botão após o link para abrir no Spotify
-            const playlistContainer = document.getElementById('playlist-container');
-            playlistContainer.insertBefore(copyLinkButton, playlistLink.nextSibling);
-        }
-    } catch (error) {
-        console.error('Erro ao criar playlist:', error);
-        resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
-        resultMessage.classList.remove('hidden');
-        resultMessage.classList.add('error');
-    } finally {
         hideLoader();
+        
+        if (result.success) {
+            // Mostrar informações da playlist criada
+            const playlistContainer = document.getElementById('playlist-container');
+            const playlistNameElement = document.getElementById('playlist-name');
+            const playlistDescriptionElement = document.getElementById('playlist-description');
+            const playlistLinkElement = document.getElementById('playlist-link');
+            
+            playlistNameElement.textContent = result.playlist.name;
+            playlistDescriptionElement.textContent = `${selectedTracks.length} música(s) adicionada(s)`;
+            playlistLinkElement.href = result.playlist.external_urls.spotify;
+            
+            // Mostrar seção da playlist criada
+            playlistSection.classList.remove('hidden');
+            profileSection.classList.add('hidden');
+            
+            showResult(`Playlist "${result.playlist.name}" criada com sucesso!`, 'success');
+        } else {
+            showResult('Erro ao criar playlist. Tente novamente.', 'error');
+        }
+        
+    } catch (error) {
+        hideLoader();
+        console.error('Error creating playlist:', error);
+        showResult('Erro ao criar playlist. Tente novamente.', 'error');
     }
 }
 

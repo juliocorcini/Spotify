@@ -1565,7 +1565,12 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
           const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
           
           if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+            // Adicionar preview_url para cada track
+            const tracksWithPreview = searchResult.body.tracks.items.map(track => ({
+              ...track,
+              preview_url: track.preview_url || null
+            }));
+            allTracks = [...allTracks, ...tracksWithPreview];
           }
         } 
         // Para special sets, buscamos músicas do artista com o tipo especial
@@ -1574,7 +1579,11 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
           const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
           
           if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+            const tracksWithPreview = searchResult.body.tracks.items.map(track => ({
+              ...track,
+              preview_url: track.preview_url || null
+            }));
+            allTracks = [...allTracks, ...tracksWithPreview];
           }
         }
         // Caso seja um artista individual (seja parte de um B2B ou artista normal)
@@ -1589,8 +1598,11 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
             const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(foundArtistId, 'BR'));
             
             if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
-              // Limitar ao número desejado por termo
-              const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm);
+              // Limitar ao número desejado por termo e adicionar preview_url
+              const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm).map(track => ({
+                ...track,
+                preview_url: track.preview_url || null
+              }));
               allTracks = [...allTracks, ...topTracks];
             }
           }
