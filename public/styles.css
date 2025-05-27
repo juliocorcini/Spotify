@@ -95,7 +95,7 @@ h3 {
 }
 
 .hidden {
-    display: none;
+    display: none !important;
 }
 
 .profile-info {
@@ -341,6 +341,11 @@ footer {
     justify-content: center;
     align-items: center;
     z-index: 1000;
+}
+
+/* Garantir que quando .loader tiver a classe .hidden, ele ficará oculto */
+.loader.hidden {
+    display: none !important;
 }
 
 .spinner {
