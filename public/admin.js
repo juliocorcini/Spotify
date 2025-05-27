@@ -314,6 +314,44 @@ function showPlaylistDetails(playlistId) {
     const badgeClass = playlist.type === 'custom' ? 'badge-custom' : 'badge-top';
     const typeText = playlist.type === 'custom' ? 'Personalizada' : 'Top Artistas';
     
+    let userInfo = 'Usuário não encontrado';
+    if (user) {
+        userInfo = `<strong>${user.displayName || user.id}</strong>`;
+        if (user.email) {
+            userInfo += ` (${user.email})`;
+        }
+    }
+    
+    // Solicitar detalhes adicionais da playlist se necessário
+    const urlParams = new URLSearchParams(window.location.search);
+    const password = urlParams.get('password');
+    
+    // Verificar se temos dados adicionais na playlist (artistas solicitados vs encontrados)
+    if (playlist.requestedArtists) {
+        renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText);
+    } else {
+        // Fazer uma solicitação para obter detalhes completos da playlist
+        fetch(`/admin/playlist-details/${playlistId}?password=${password}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Falha ao carregar detalhes da playlist');
+                }
+                return response.json();
+            })
+            .then(details => {
+                // Atualizar o objeto de playlist com os detalhes completos
+                Object.assign(playlist, details);
+                renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText);
+            })
+            .catch(error => {
+                console.error('Erro ao carregar detalhes da playlist:', error);
+                renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText);
+            });
+    }
+}
+
+// Renderizar detalhes básicos da playlist (sem informações dos artistas)
+function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     modalBody.innerHTML = `
         <div class="playlist-details">
             <p><strong>Nome:</strong> ${playlist.name}</p>
@@ -322,8 +360,75 @@ function showPlaylistDetails(playlistId) {
             <p><strong>Artistas:</strong> ${playlist.artistsCount || 'N/A'}</p>
             <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
-            <p><strong>Criada por:</strong> ${user ? (user.displayName || user.id) : playlist.userId}</p>
+            <p><strong>Criada por:</strong> ${userInfo}</p>
             <p><strong>Link:</strong> <a href="${playlist.url}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Renderizar detalhes completos da playlist com informações dos artistas
+function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
+    let artistsSection = '';
+    
+    if (playlist.requestedArtists && playlist.requestedArtists.length > 0) {
+        artistsSection = `
+            <div class="artists-comparison">
+                <h3>Artistas Solicitados vs. Encontrados</h3>
+                <table class="artists-table">
+                    <thead>
+                        <tr>
+                            <th>Artista Solicitado</th>
+                            <th>Artista Encontrado</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        playlist.requestedArtists.forEach(reqArtist => {
+            const foundArtist = playlist.foundArtists && playlist.foundArtists.find(a => a.requestedName === reqArtist);
+            
+            let status, artistName;
+            if (!foundArtist) {
+                status = '<span class="status-error">Não encontrado</span>';
+                artistName = 'N/A';
+            } else if (foundArtist.error) {
+                status = `<span class="status-error">Erro: ${foundArtist.errorMessage || 'Desconhecido'}</span>`;
+                artistName = 'N/A';
+            } else {
+                status = '<span class="status-success">Encontrado</span>';
+                artistName = foundArtist.name;
+            }
+            
+            artistsSection += `
+                <tr>
+                    <td>${reqArtist}</td>
+                    <td>${artistName}</td>
+                    <td>${status}</td>
+                </tr>
+            `;
+        });
+        
+        artistsSection += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+    
+    modalBody.innerHTML = `
+        <div class="playlist-details">
+            <p><strong>Nome:</strong> ${playlist.name}</p>
+            <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
+            <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
+            <p><strong>Artistas:</strong> ${playlist.artistsCount || 'N/A'}</p>
+            <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
+            <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
+            <p><strong>Criada por:</strong> ${userInfo}</p>
+            <p><strong>Link:</strong> <a href="${playlist.url}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
+            ${artistsSection}
         </div>
     `;
     

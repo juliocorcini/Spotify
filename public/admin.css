@@ -290,4 +290,45 @@ table tr:hover {
         width: 100%;
         justify-content: space-between;
     }
+}
+
+/* Tabela de comparação de artistas */
+.artists-comparison {
+    margin-top: 25px;
+    padding-top: 15px;
+    border-top: 1px solid #eee;
+}
+
+.artists-comparison h3 {
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.artists-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.artists-table th,
+.artists-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.artists-table th {
+    font-weight: 600;
+    color: #555;
+    background-color: #f9f9f9;
+}
+
+.status-success {
+    color: #2e7d32;
+    font-weight: 500;
+}
+
+.status-error {
+    color: #c62828;
+    font-weight: 500;
 } 

@@ -92,11 +92,12 @@ function registerUser(userData) {
 }
 
 // Função para registrar playlist
-function registerPlaylist(playlistData, userId) {
+function registerPlaylist(playlistData, userId, extraData = {}) {
   playlists.push({
     ...playlistData,
     userId,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    ...extraData
   });
   
   saveData(PLAYLISTS_DATA_FILE, playlists);
@@ -339,6 +340,7 @@ app.post('/create-custom-playlist', async (req, res) => {
     // 3. Processar cada artista
     let allArtistsData = [];
     let allTracks = [];
+    let foundArtists = []; // Para registrar os artistas encontrados
     
     for (const artistName of artists) {
       try {
@@ -349,6 +351,10 @@ app.post('/create-custom-playlist', async (req, res) => {
           // Artista não encontrado
           allArtistsData.push({
             name: artistName,
+            notFound: true
+          });
+          foundArtists.push({
+            requestedName: artistName,
             notFound: true
           });
           continue;
@@ -381,10 +387,22 @@ app.post('/create-custom-playlist', async (req, res) => {
             }
           }))
         });
+        
+        // Registrar o artista encontrado
+        foundArtists.push({
+          requestedName: artistName,
+          id: artist.id,
+          name: artist.name
+        });
       } catch (error) {
         console.error(`Error processing artist "${artistName}":`, error);
         allArtistsData.push({
           name: artistName,
+          error: true,
+          errorMessage: error.message || "Erro desconhecido"
+        });
+        foundArtists.push({
+          requestedName: artistName,
           error: true,
           errorMessage: error.message || "Erro desconhecido"
         });
@@ -409,7 +427,10 @@ app.post('/create-custom-playlist', async (req, res) => {
       url: playlist.body.external_urls.spotify,
       type: 'custom',
       artistsCount: artists.length
-    }, userId);
+    }, userId, {
+      requestedArtists: artists,
+      foundArtists: foundArtists
+    });
     
     res.status(200).json({
       success: true,
@@ -456,9 +477,13 @@ app.post('/create-artist-playlist', async (req, res) => {
     // 4. Para cada artista, obter suas músicas mais populares
     let tracks = [];
     let allArtistsData = [];
+    let topArtistNames = [];
+    let foundArtists = [];
     
     for (const artist of topArtists.body.items) {
       try {
+        topArtistNames.push(artist.name);
+        
         const artistTracks = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
         
         // Adicionar até 5 músicas mais populares de cada artista
@@ -482,10 +507,22 @@ app.post('/create-artist-playlist', async (req, res) => {
             }
           }))
         });
+        
+        // Registrar o artista encontrado
+        foundArtists.push({
+          requestedName: artist.name, // Neste caso, o artista solicitado é o mesmo que o encontrado
+          id: artist.id,
+          name: artist.name
+        });
       } catch (error) {
         console.error(`Error processing top artist ${artist.name}:`, error);
         allArtistsData.push({
           name: artist.name,
+          error: true,
+          errorMessage: error.message || "Erro desconhecido"
+        });
+        foundArtists.push({
+          requestedName: artist.name,
           error: true,
           errorMessage: error.message || "Erro desconhecido"
         });
@@ -510,7 +547,10 @@ app.post('/create-artist-playlist', async (req, res) => {
       url: playlist.body.external_urls.spotify,
       type: 'top_artists',
       artistsCount: allArtistsData.length
-    }, userId);
+    }, userId, {
+      requestedArtists: topArtistNames,
+      foundArtists: foundArtists
+    });
     
     res.status(200).json({
       success: true,
@@ -539,6 +579,21 @@ app.get('/admin/playlists', checkAdminAuth, (req, res) => {
 // Admin route para visualizar dashboard
 app.get('/admin', checkAdminAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Admin route para visualizar detalhes de uma playlist específica
+app.get('/admin/playlist-details/:playlistId', checkAdminAuth, (req, res) => {
+  const { playlistId } = req.params;
+  const playlist = playlists.find(p => p.id === playlistId);
+  
+  if (!playlist) {
+    return res.status(404).json({ error: 'Playlist não encontrada' });
+  }
+  
+  res.json({
+    requestedArtists: playlist.requestedArtists || [],
+    foundArtists: playlist.foundArtists || []
+  });
 });
 
 // Refresh token route
