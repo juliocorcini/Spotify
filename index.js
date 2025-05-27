@@ -1387,6 +1387,248 @@ app.post('/refresh', async (req, res) => {
   }
 });
 
+// Nova função para processar nomes de artistas especiais (B2B, special sets, etc.)
+function processArtistName(artistName) {
+  const originalName = artistName.trim();
+  let processedInfo = {
+    originalName: originalName,
+    displayName: originalName,
+    searchTerms: [],
+    isB2B: false,
+    isSpecial: false
+  };
+  
+  // Verificar se é um B2B (back-to-back, dois artistas juntos)
+  if (originalName.includes('B2B')) {
+    processedInfo.isB2B = true;
+    
+    // Extrair os nomes dos artistas
+    const artists = originalName.split('B2B').map(name => name.trim());
+    
+    // Nome de exibição permanece o mesmo
+    processedInfo.displayName = originalName;
+    
+    // Adicionar termos de busca para encontrar colaborações entre os artistas
+    if (artists.length >= 2) {
+      // Buscar colaborações entre os artistas
+      processedInfo.searchTerms.push(`${artists[0]} ${artists[1]}`);
+      processedInfo.searchTerms.push(`${artists[1]} ${artists[0]}`);
+      
+      // Também buscar cada artista individualmente
+      artists.forEach(artist => {
+        if (artist && artist.length > 0) {
+          processedInfo.searchTerms.push(artist);
+        }
+      });
+    } else {
+      // Fallback se não conseguirmos dividir corretamente
+      processedInfo.searchTerms.push(originalName);
+    }
+  } 
+  // Verificar se é um special set ou similar (entre parênteses)
+  else if (originalName.includes('(') && originalName.includes(')')) {
+    processedInfo.isSpecial = true;
+    
+    // Extrair o nome base do artista e o tipo de set
+    const baseArtist = originalName.substring(0, originalName.indexOf('(')).trim();
+    const specialType = originalName.match(/\((.*?)\)/)[1].trim();
+    
+    // Nome de exibição permanece o mesmo
+    processedInfo.displayName = originalName;
+    
+    // Buscar pelo set especial primeiro
+    processedInfo.searchTerms.push(`${baseArtist} ${specialType}`);
+    
+    // Depois buscar pelo artista normal
+    processedInfo.searchTerms.push(baseArtist);
+  } 
+  // Artista normal
+  else {
+    processedInfo.searchTerms.push(originalName);
+  }
+  
+  return processedInfo;
+}
+
+// Nova rota para buscar artistas com suporte a formatos especiais
+app.get('/search-artist-special', async (req, res) => {
+  try {
+    if (!setTokenFromRequest(req)) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const { query } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Search query is required' });
+    }
+    
+    // Processar o nome do artista para detectar formatos especiais
+    const processedArtist = processArtistName(query);
+    
+    // Array para armazenar resultados de todas as buscas
+    let allResults = [];
+    let primaryArtist = null;
+    
+    // Realizar busca para cada termo
+    for (const [index, searchTerm] of processedArtist.searchTerms.entries()) {
+      try {
+        const result = await withRetry(() => spotifyApi.searchArtists(searchTerm, { limit: 5 }));
+        
+        // Para o primeiro termo, consideramos como resultado principal
+        if (index === 0 && result.body.artists.items.length > 0) {
+          primaryArtist = {
+            ...result.body.artists.items[0],
+            displayName: processedArtist.displayName,
+            originalName: processedArtist.originalName,
+            isB2B: processedArtist.isB2B,
+            isSpecial: processedArtist.isSpecial,
+            searchTerms: processedArtist.searchTerms
+          };
+        }
+        
+        // Adicionar resultados dessa busca ao array geral
+        allResults.push(...result.body.artists.items);
+      } catch (error) {
+        console.error(`Error searching for term "${searchTerm}":`, error);
+      }
+    }
+    
+    // Se não encontramos um artista principal, usar o primeiro resultado de qualquer busca
+    if (!primaryArtist && allResults.length > 0) {
+      primaryArtist = {
+        ...allResults[0],
+        displayName: processedArtist.displayName,
+        originalName: processedArtist.originalName,
+        isB2B: processedArtist.isB2B,
+        isSpecial: processedArtist.isSpecial,
+        searchTerms: processedArtist.searchTerms
+      };
+    }
+    
+    // Responder com o artista principal e todos os resultados
+    res.status(200).json({
+      primaryArtist: primaryArtist,
+      allResults: allResults,
+      processedInfo: processedArtist
+    });
+    
+  } catch (err) {
+    console.error('Error in special artist search:', err);
+    res.status(400).json({ error: 'Error searching for special artist format' });
+  }
+});
+
+// Nova rota para obter faixas para artistas especiais (B2B, special sets)
+app.get('/artist-special-tracks/:artistId', async (req, res) => {
+  try {
+    if (!setTokenFromRequest(req)) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const { artistId } = req.params;
+    const { limit = 10, displayName, searchTerms } = req.query;
+    
+    if (!artistId || !displayName) {
+      return res.status(400).json({ error: 'Artist ID and display name are required' });
+    }
+    
+    // Parse searchTerms if provided as a string
+    let terms = [];
+    try {
+      terms = searchTerms ? JSON.parse(searchTerms) : [];
+    } catch (error) {
+      console.error('Error parsing search terms:', error);
+      terms = [];
+    }
+    
+    // Processar o nome do artista
+    const processedArtist = processArtistName(displayName);
+    
+    // Se não temos termos passados, usar os do processamento
+    if (terms.length === 0) {
+      terms = processedArtist.searchTerms;
+    }
+    
+    // Array para armazenar todas as faixas
+    let allTracks = [];
+    
+    // Quantidade de faixas a buscar para cada termo, distribuindo o limite
+    const tracksPerTerm = Math.ceil(parseInt(limit, 10) / Math.max(1, terms.length));
+    
+    // Para cada termo de busca, buscar faixas
+    for (const [index, term] of terms.entries()) {
+      try {
+        // Para B2B sets, buscamos músicas que contenham ambos os artistas
+        if (processedArtist.isB2B && index < 2) {
+          // Buscar colaborações diretas entre os artistas
+          const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
+          
+          if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
+            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+          }
+        } 
+        // Para special sets, buscamos músicas do artista com o tipo especial
+        else if (processedArtist.isSpecial && index === 0) {
+          // Buscar faixas específicas para o tipo de set especial
+          const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
+          
+          if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
+            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+          }
+        }
+        // Caso seja um artista individual (seja parte de um B2B ou artista normal)
+        else {
+          // Obter o ID do artista através da busca
+          const artistResult = await withRetry(() => spotifyApi.searchArtists(term, { limit: 1 }));
+          
+          if (artistResult.body.artists && artistResult.body.artists.items.length > 0) {
+            const foundArtistId = artistResult.body.artists.items[0].id;
+            
+            // Buscar faixas populares deste artista
+            const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(foundArtistId, 'BR'));
+            
+            if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
+              // Limitar ao número desejado por termo
+              const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm);
+              allTracks = [...allTracks, ...topTracks];
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching tracks for term "${term}":`, error);
+      }
+    }
+    
+    // Remover duplicatas baseadas no ID da faixa
+    const uniqueTracks = [];
+    const trackIds = new Set();
+    
+    for (const track of allTracks) {
+      if (!trackIds.has(track.id)) {
+        trackIds.add(track.id);
+        uniqueTracks.push(track);
+      }
+    }
+    
+    // Limitar ao número solicitado
+    const limitedTracks = uniqueTracks.slice(0, parseInt(limit, 10));
+    
+    // Retornar as faixas encontradas
+    res.status(200).json({
+      displayName: displayName,
+      originalName: processedArtist.originalName,
+      isB2B: processedArtist.isB2B,
+      isSpecial: processedArtist.isSpecial,
+      tracks: limitedTracks
+    });
+    
+  } catch (err) {
+    console.error('Error getting tracks for special artist:', err);
+    res.status(400).json({ error: 'Error getting tracks for special artist format' });
+  }
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

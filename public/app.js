@@ -203,6 +203,12 @@ function formatDuration(ms) {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
 
+// Função para verificar se um nome de artista é especial (B2B, special set, etc.)
+function isSpecialArtistFormat(artistName) {
+    if (!artistName) return false;
+    return artistName.includes('B2B') || (artistName.includes('(') && artistName.includes(')'));
+}
+
 // Renderizar artistas e faixas na página de playlist
 function renderPlaylistDetails(artists, isPreview = false) {
     playlistArtists.innerHTML = '';
@@ -216,6 +222,19 @@ function renderPlaylistDetails(artists, isPreview = false) {
             <button id="cancel-create-playlist" class="btn tertiary">Voltar</button>
         `;
         playlistArtists.appendChild(createButtonDiv);
+        
+        // Adicionar instruções sobre formatos especiais de artistas
+        const specialFormatsInfo = document.createElement('div');
+        specialFormatsInfo.className = 'artist-formats-info';
+        specialFormatsInfo.innerHTML = `
+            <div class="info-title">Dicas para buscar artistas:</div>
+            <ul>
+                <li><strong>Artistas normais:</strong> Digite o nome do artista normalmente, ex: "ARGY", "Vintage Culture"</li>
+                <li><strong>Sets B2B (back-to-back):</strong> Digite com "B2B" entre os nomes dos artistas, ex: "DUBDOGZ B2B CAT DEALERS"</li>
+                <li><strong>Sets especiais:</strong> Digite o tipo do set/musica entre parênteses, ex: "VINTAGE CULTURE (FOR A FEELING)"</li>
+            </ul>
+        `;
+        playlistArtists.appendChild(specialFormatsInfo);
         
         // Adicionar event listeners
         document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
@@ -286,11 +305,22 @@ function renderPlaylistDetails(artists, isPreview = false) {
         const nameWarningHtml = artist.nameWarning ? 
             `<div class="artist-name-warning">${artist.nameWarning}</div>` : '';
         
+        // Adicionar info se for um formato especial (B2B ou Special Set)
+        let specialFormatHtml = '';
+        if (artist.isSpecialFormat) {
+            if (artist.specialInfo && artist.specialInfo.isB2B) {
+                specialFormatHtml = `<div class="artist-special-format">B2B Set (Conjunto de artistas)</div>`;
+            } else if (artist.specialInfo && artist.specialInfo.isSpecial) {
+                specialFormatHtml = `<div class="artist-special-format">Set Especial</div>`;
+            }
+        }
+        
         artistInfo.innerHTML = `
             <img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">
             <div class="artist-details">
                 <div class="artist-name">${artist.name}</div>
                 ${nameWarningHtml}
+                ${specialFormatHtml}
             </div>
         `;
         
@@ -351,7 +381,13 @@ function renderPlaylistDetails(artists, isPreview = false) {
         
         // Event listeners para os botões
         artistElement.querySelector('.load-more-btn').addEventListener('click', () => {
-            loadMoreTracks(artist.id, trackList, artist.name);
+            if (artist.isSpecialFormat) {
+                // Para formatos especiais, usar o endpoint específico
+                loadMoreSpecialTracks(artist.id, trackList, artist.name, artist.originalName, artist.specialInfo);
+            } else {
+                // Para artistas normais, usar o endpoint padrão
+                loadMoreTracks(artist.id, trackList, artist.name);
+            }
         });
 
         artistElement.querySelector('.search-track-btn').addEventListener('click', () => {
@@ -389,17 +425,16 @@ function renderPlaylistDetails(artists, isPreview = false) {
         playlistArtists.appendChild(artistElement);
     });
 
-    // Adicionar botão de criar playlist no final da página
-    const bottomCreateButtonDiv = document.createElement('div');
-    bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
-    bottomCreateButtonDiv.innerHTML = `
-        <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
-        <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
-    `;
-    
     // O botão só será adicionado após a seção de recomendações (se existir)
     // Essa lógica é tratada após o carregamento das recomendações
     if (!isPreview || document.querySelector('.recommendations-section') === null) {
+        // Adicionar botão de criar playlist no final da página
+        const bottomCreateButtonDiv = document.createElement('div');
+        bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
+        bottomCreateButtonDiv.innerHTML = `
+            <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
+            <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
+        `;
         playlistArtists.appendChild(bottomCreateButtonDiv);
         
         // Adicionar event listeners
@@ -705,6 +740,195 @@ async function loadRecommendations(artists, limit = 10) {
     }
 }
 
+// Função para carregar mais faixas de artistas especiais (B2B, special sets)
+async function loadMoreSpecialTracks(artistId, trackListElement, artistName, originalName, specialInfo) {
+    try {
+        showLoader();
+        
+        // Obter IDs das faixas já exibidas para evitar duplicação
+        const existingTrackIds = Array.from(trackListElement.querySelectorAll('.track-item'))
+            .map(item => item.dataset.trackId);
+        
+        // Criar termos de busca com base no tipo de set especial
+        let searchTerms = [];
+        const processedArtist = processArtistName(originalName || artistName);
+        
+        // Usar os termos de busca do processamento
+        searchTerms = processedArtist.searchTerms;
+        
+        // Buscar faixas usando o endpoint para artistas especiais
+        const response = await fetch(
+            `/artist-special-tracks/${artistId}?displayName=${encodeURIComponent(originalName || artistName)}&limit=10&searchTerms=${encodeURIComponent(JSON.stringify(searchTerms))}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            }
+        );
+        
+        if (!response.ok) {
+            throw new Error(`Erro ao buscar mais músicas para ${artistName}`);
+        }
+        
+        const data = await response.json();
+        
+        // Filtrar faixas que já estão na lista
+        const newTracks = data.tracks.filter(track => !existingTrackIds.includes(track.id));
+        
+        if (newTracks.length === 0) {
+            alert('Não há mais músicas disponíveis para este artista/conjunto.');
+            return;
+        }
+        
+        // Adicionar novas faixas à lista
+        newTracks.forEach(track => {
+            const trackItem = document.createElement('li');
+            trackItem.className = 'track-item';
+            trackItem.dataset.trackUri = track.uri;
+            trackItem.dataset.trackId = track.id;
+            
+            const albumImageSrc = track.album?.images?.length > 0 ? 
+                track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
+            
+            trackItem.innerHTML = `
+                <input type="checkbox" class="track-checkbox">
+                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-details">
+                    <div class="track-name">${track.name}</div>
+                    <div class="track-album">${track.album?.name || ''}</div>
+                </div>
+                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+            `;
+            
+            trackListElement.appendChild(trackItem);
+        });
+        
+    } catch (error) {
+        console.error('Erro ao carregar mais músicas:', error);
+        alert(`Erro ao carregar mais músicas: ${error.message}`);
+    } finally {
+        hideLoader();
+    }
+}
+
+// Função para processar nomes de artistas especiais no frontend (igual à do backend)
+function processArtistName(artistName) {
+    const originalName = artistName.trim();
+    let processedInfo = {
+        originalName: originalName,
+        displayName: originalName,
+        searchTerms: [],
+        isB2B: false,
+        isSpecial: false
+    };
+    
+    // Verificar se é um B2B (back-to-back, dois artistas juntos)
+    if (originalName.includes('B2B')) {
+        processedInfo.isB2B = true;
+        
+        // Extrair os nomes dos artistas
+        const artists = originalName.split('B2B').map(name => name.trim());
+        
+        // Nome de exibição permanece o mesmo
+        processedInfo.displayName = originalName;
+        
+        // Adicionar termos de busca para encontrar colaborações entre os artistas
+        if (artists.length >= 2) {
+            // Buscar colaborações entre os artistas
+            processedInfo.searchTerms.push(`${artists[0]} ${artists[1]}`);
+            processedInfo.searchTerms.push(`${artists[1]} ${artists[0]}`);
+            
+            // Também buscar cada artista individualmente
+            artists.forEach(artist => {
+                if (artist && artist.length > 0) {
+                    processedInfo.searchTerms.push(artist);
+                }
+            });
+        } else {
+            // Fallback se não conseguirmos dividir corretamente
+            processedInfo.searchTerms.push(originalName);
+        }
+    } 
+    // Verificar se é um special set ou similar (entre parênteses)
+    else if (originalName.includes('(') && originalName.includes(')')) {
+        processedInfo.isSpecial = true;
+        
+        // Extrair o nome base do artista e o tipo de set
+        const baseArtist = originalName.substring(0, originalName.indexOf('(')).trim();
+        const specialType = originalName.match(/\((.*?)\)/)[1].trim();
+        
+        // Nome de exibição permanece o mesmo
+        processedInfo.displayName = originalName;
+        
+        // Buscar pelo set especial primeiro
+        processedInfo.searchTerms.push(`${baseArtist} ${specialType}`);
+        
+        // Depois buscar pelo artista normal
+        processedInfo.searchTerms.push(baseArtist);
+    } 
+    // Artista normal
+    else {
+        processedInfo.searchTerms.push(originalName);
+    }
+    
+    return processedInfo;
+}
+
+// Encontrar o melhor artista correspondente entre os resultados da busca
+function findBestArtistMatch(requestedName, candidates) {
+    if (!candidates || candidates.length === 0) return null;
+    
+    // Normalizar o nome solicitado
+    const requestedClean = requestedName.toLowerCase().trim();
+    
+    // Primeiro, procurar por correspondência exata
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        if (artistNameClean === requestedClean) {
+            return artist;
+        }
+    }
+    
+    // Segundo, procurar por inclusão
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        if (artistNameClean.includes(requestedClean) || requestedClean.includes(artistNameClean)) {
+            return artist;
+        }
+    }
+    
+    // Terceiro, calcular similaridade usando Levenshtein e aceitar se for alta o suficiente
+    for (const artist of candidates) {
+        const artistNameClean = artist.name.toLowerCase().trim();
+        const similarity = calculateSimilarity(requestedClean, artistNameClean);
+        if (similarity >= 0.8) {
+            return artist;
+        }
+    }
+    
+    // Se a similaridade for muito baixa, não retornar nenhum artista
+    return null;
+}
+
+// Calcular similaridade entre duas strings (simplificado)
+function calculateSimilarity(str1, str2) {
+    const maxLength = Math.max(str1.length, str2.length);
+    if (maxLength === 0) return 1.0; // Ambas vazias
+    
+    let matches = 0;
+    const minLength = Math.min(str1.length, str2.length);
+    
+    // Contar caracteres correspondentes
+    for (let i = 0; i < minLength; i++) {
+        if (str1.charAt(i) === str2.charAt(i)) {
+            matches++;
+        }
+    }
+    
+    // Similaridade básica
+    return matches / maxLength;
+}
+
 // Carregar prévia das músicas dos artistas favoritos
 async function previewTopArtists() {
     showLoader();
@@ -828,76 +1052,141 @@ async function previewCustomArtists(event) {
         
         for (const artistName of artistsList) {
             try {
-                // Buscar o artista
-                const searchResponse = await fetch(`/search-artist?query=${encodeURIComponent(artistName)}`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-                
-                if (!searchResponse.ok) {
-                    throw new Error(`Error searching for ${artistName}`);
-                }
-                
-                const searchData = await searchResponse.json();
-                
-                if (searchData.artists.items.length === 0) {
-                    // Artista não encontrado
-                    previewArtists.push({
-                        name: artistName,
-                        notFound: true
-                    });
-                    continue;
-                }
-                
-                // Encontrar o artista mais próximo usando a função compareNames
-                const artist = findBestArtistMatch(artistName, searchData.artists.items);
-                
-                // Se não encontrou um artista suficientemente similar
-                if (!artist) {
-                    previewArtists.push({
-                        name: artistName,
-                        notFound: true,
-                        reason: "Não foi possível encontrar este artista com exatidão suficiente."
-                    });
-                    continue;
-                }
-                
-                // Verificar se o nome é exatamente o mesmo (ignorando case e espaços)
-                const exactMatch = artist.name.toLowerCase().trim() === artistName.toLowerCase().trim();
-                const nameWarning = !exactMatch ? 
-                    `Aviso: Encontrado "${artist.name}" em vez de "${artistName}"` : null;
-                
-                // Obter as faixas mais populares do artista
-                const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
-                
-                if (!tracksResponse.ok) {
-                    throw new Error(`Error fetching tracks for ${artistName}`);
-                }
-                
-                const tracksData = await tracksResponse.json();
-                
-                previewArtists.push({
-                    id: artist.id,
-                    name: artist.name,
-                    image: artist.images.length > 0 ? artist.images[0].url : null,
-                    nameWarning: nameWarning,
-                    originalName: artistName,
-                    tracks: tracksData.tracks.map(track => ({
-                        id: track.id,
-                        name: track.name,
-                        uri: track.uri,
-                        duration_ms: track.duration_ms,
-                        album: {
-                            name: track.album.name,
-                            image: track.album.images.length > 0 ? track.album.images[0].url : null
+                // Verificar se é um formato especial (B2B ou special set)
+                if (isSpecialArtistFormat(artistName)) {
+                    // Usar o endpoint especial para buscar artistas especiais
+                    const searchResponse = await fetch(`/search-artist-special?query=${encodeURIComponent(artistName)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
                         }
-                    }))
-                });
+                    });
+                    
+                    if (!searchResponse.ok) {
+                        throw new Error(`Error searching for ${artistName}`);
+                    }
+                    
+                    const searchData = await searchResponse.json();
+                    
+                    if (!searchData.primaryArtist) {
+                        // Artista não encontrado
+                        previewArtists.push({
+                            name: artistName,
+                            notFound: true
+                        });
+                        continue;
+                    }
+                    
+                    const artist = searchData.primaryArtist;
+                    
+                    // Usar o endpoint especial para buscar faixas
+                    const tracksResponse = await fetch(
+                        `/artist-special-tracks/${artist.id}?displayName=${encodeURIComponent(artist.displayName)}&limit=${tracksCount}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`,
+                        {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        }
+                    );
+                    
+                    if (!tracksResponse.ok) {
+                        throw new Error(`Error fetching tracks for ${artistName}`);
+                    }
+                    
+                    const tracksData = await tracksResponse.json();
+                    
+                    previewArtists.push({
+                        id: artist.id,
+                        name: artist.displayName || artist.name,
+                        originalName: artistName,
+                        image: artist.images && artist.images.length > 0 ? artist.images[0].url : null,
+                        tracks: tracksData.tracks.map(track => ({
+                            id: track.id,
+                            name: track.name,
+                            uri: track.uri,
+                            duration_ms: track.duration_ms,
+                            album: {
+                                name: track.album.name,
+                                image: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
+                            }
+                        })),
+                        isSpecialFormat: true,
+                        specialInfo: {
+                            isB2B: artist.isB2B,
+                            isSpecial: artist.isSpecial
+                        }
+                    });
+                } else {
+                    // Buscar artista normal
+                    const searchResponse = await fetch(`/search-artist?query=${encodeURIComponent(artistName)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+                    
+                    if (!searchResponse.ok) {
+                        throw new Error(`Error searching for ${artistName}`);
+                    }
+                    
+                    const searchData = await searchResponse.json();
+                    
+                    if (searchData.artists.items.length === 0) {
+                        // Artista não encontrado
+                        previewArtists.push({
+                            name: artistName,
+                            notFound: true
+                        });
+                        continue;
+                    }
+                    
+                    // Encontrar o artista mais próximo usando a função compareNames
+                    const artist = findBestArtistMatch(artistName, searchData.artists.items);
+                    
+                    // Se não encontrou um artista suficientemente similar
+                    if (!artist) {
+                        previewArtists.push({
+                            name: artistName,
+                            notFound: true,
+                            reason: "Não foi possível encontrar este artista com exatidão suficiente."
+                        });
+                        continue;
+                    }
+                    
+                    // Verificar se o nome é exatamente o mesmo (ignorando case e espaços)
+                    const exactMatch = artist.name.toLowerCase().trim() === artistName.toLowerCase().trim();
+                    const nameWarning = !exactMatch ? 
+                        `Aviso: Encontrado "${artist.name}" em vez de "${artistName}"` : null;
+                    
+                    // Obter as faixas mais populares do artista
+                    const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=${tracksCount}`, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        }
+                    });
+                    
+                    if (!tracksResponse.ok) {
+                        throw new Error(`Error fetching tracks for ${artistName}`);
+                    }
+                    
+                    const tracksData = await tracksResponse.json();
+                    
+                    previewArtists.push({
+                        id: artist.id,
+                        name: artist.name,
+                        image: artist.images.length > 0 ? artist.images[0].url : null,
+                        nameWarning: nameWarning,
+                        originalName: artistName,
+                        tracks: tracksData.tracks.map(track => ({
+                            id: track.id,
+                            name: track.name,
+                            uri: track.uri,
+                            duration_ms: track.duration_ms,
+                            album: {
+                                name: track.album.name,
+                                image: track.album.images.length > 0 ? track.album.images[0].url : null
+                            }
+                        }))
+                    });
+                }
             } catch (error) {
                 console.error(`Error processing artist ${artistName}:`, error);
                 previewArtists.push({
@@ -927,61 +1216,6 @@ async function previewCustomArtists(event) {
     } finally {
         hideLoader();
     }
-}
-
-// Encontrar o melhor artista correspondente entre os resultados da busca
-function findBestArtistMatch(requestedName, candidates) {
-    if (!candidates || candidates.length === 0) return null;
-    
-    // Normalizar o nome solicitado
-    const requestedClean = requestedName.toLowerCase().trim();
-    
-    // Primeiro, procurar por correspondência exata
-    for (const artist of candidates) {
-        const artistNameClean = artist.name.toLowerCase().trim();
-        if (artistNameClean === requestedClean) {
-            return artist;
-        }
-    }
-    
-    // Segundo, procurar por inclusão
-    for (const artist of candidates) {
-        const artistNameClean = artist.name.toLowerCase().trim();
-        if (artistNameClean.includes(requestedClean) || requestedClean.includes(artistNameClean)) {
-            return artist;
-        }
-    }
-    
-    // Terceiro, calcular similaridade usando Levenshtein e aceitar se for alta o suficiente
-    for (const artist of candidates) {
-        const artistNameClean = artist.name.toLowerCase().trim();
-        const similarity = calculateSimilarity(requestedClean, artistNameClean);
-        if (similarity >= 0.8) {
-            return artist;
-        }
-    }
-    
-    // Se a similaridade for muito baixa, não retornar nenhum artista
-    return null;
-}
-
-// Calcular similaridade entre duas strings (simplificado)
-function calculateSimilarity(str1, str2) {
-    const maxLength = Math.max(str1.length, str2.length);
-    if (maxLength === 0) return 1.0; // Ambas vazias
-    
-    let matches = 0;
-    const minLength = Math.min(str1.length, str2.length);
-    
-    // Contar caracteres correspondentes
-    for (let i = 0; i < minLength; i++) {
-        if (str1.charAt(i) === str2.charAt(i)) {
-            matches++;
-        }
-    }
-    
-    // Similaridade básica
-    return matches / maxLength;
 }
 
 // Mostrar a prévia da playlist
