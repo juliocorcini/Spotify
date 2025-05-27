@@ -596,154 +596,92 @@ async function loadRecommendations(artists, limit = 10) {
         // Adicionar parâmetros extras para melhorar recomendações
         query += `&limit=${limit}`;
         
-        // Função para fazer uma tentativa de recomendações com parâmetros específicos
-        async function tryRecommendation(queryParams, attemptMessage = '') {
-            console.log(attemptMessage || 'Tentando obter recomendações...');
-            
-            const response = await fetch(`/recommendations?${queryParams}`, {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
-            });
-            
-            const data = await response.json();
-            
-            if (!response.ok) {
-                console.error('Erro na API de recomendações:', data.error || 'Erro desconhecido');
-                if (data.details) {
-                    console.error('Detalhes:', JSON.stringify(data.details, null, 2));
-                }
-                return { success: false, data };
+        const response = await fetch(`/recommendations?${query}`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
             }
-            
-            if (!data.tracks || data.tracks.length === 0) {
-                console.log('Nenhuma recomendação encontrada');
-                return { success: false, reason: 'no_tracks' };
-            }
-            
-            return { success: true, data };
+        });
+        
+        if (!response.ok) {
+            console.error('Erro na resposta da API:', response.status, response.statusText);
+            throw new Error(`Erro ao buscar recomendações: ${response.status} ${response.statusText}`);
         }
         
-        // Primeira tentativa com todos os seeds
-        const result = await tryRecommendation(query);
+        const data = await response.json();
         
-        if (result.success) {
-            // Sucesso na primeira tentativa
-            createRecommendationsSection(result.data.tracks);
-            return;
+        if (!data.tracks || data.tracks.length === 0) {
+            console.log('Nenhuma recomendação encontrada');
+            return; // Nenhuma recomendação encontrada
         }
         
-        // Se falhou e o erro indica um problema com os seeds, tentar com menos seeds
-        if (result.data && result.data.error === 'One or more seed IDs are invalid or not found') {
-            console.log('Problema com seeds, tentando com subconjunto...');
+        // Criar seção de recomendações
+        const recommendationsSection = document.createElement('div');
+        recommendationsSection.className = 'artist-item recommendations-section';
+        
+        // Título da seção
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'recommendations-title';
+        titleDiv.innerHTML = `
+            <h3>Músicas Recomendadas</h3>
+            <button class="toggle-all-btn" data-action="select-all">Marcar Todas</button>
+            <button class="toggle-all-btn" data-action="unselect-all">Desmarcar Todas</button>
+            <div class="recommendations-info">
+                Baseado no seu gosto musical e artistas selecionados
+            </div>
+        `;
+        
+        // Lista de faixas recomendadas
+        const trackList = document.createElement('ul');
+        trackList.className = 'track-list';
+        
+        data.tracks.forEach(track => {
+            const trackItem = document.createElement('li');
+            trackItem.className = 'track-item';
+            trackItem.dataset.trackUri = track.uri;
+            trackItem.dataset.trackId = track.id;
             
-            // Estratégia 1: Tentar só com artistas
-            if (finalSeedArtists.length > 0) {
-                const artistOnlyQuery = `seed_artists=${finalSeedArtists[0]}&limit=${limit}`;
-                const artistResult = await tryRecommendation(artistOnlyQuery, 'Tentando apenas com ID do artista...');
-                
-                if (artistResult.success) {
-                    createRecommendationsSection(artistResult.data.tracks);
-                    return;
-                }
-            }
+            const albumImageSrc = track.album?.images?.length > 0 ? 
+                track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
             
-            // Estratégia 2: Tentar só com tracks
-            if (finalSeedTracks.length > 0) {
-                const trackOnlyQuery = `seed_tracks=${finalSeedTracks[0]}&limit=${limit}`;
-                const trackResult = await tryRecommendation(trackOnlyQuery, 'Tentando apenas com uma faixa...');
-                
-                if (trackResult.success) {
-                    createRecommendationsSection(trackResult.data.tracks);
-                    return;
-                }
-            }
+            // O artista da faixa
+            const artistName = track.artists.map(a => a.name).join(', ');
             
-            // Estratégia 3: Se tivermos mais de uma faixa, tentar uma diferente
-            if (finalSeedTracks.length > 1) {
-                const altTrackQuery = `seed_tracks=${finalSeedTracks[1]}&limit=${limit}`;
-                const altTrackResult = await tryRecommendation(altTrackQuery, 'Tentando com faixa alternativa...');
-                
-                if (altTrackResult.success) {
-                    createRecommendationsSection(altTrackResult.data.tracks);
-                    return;
-                }
-            }
+            trackItem.innerHTML = `
+                <input type="checkbox" class="track-checkbox">
+                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-details">
+                    <div class="track-name">${track.name}</div>
+                    <div class="track-album">${artistName} - ${track.album?.name || ''}</div>
+                </div>
+                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+            `;
             
-            console.log('Todas as tentativas de recomendação falharam');
-        }
+            trackList.appendChild(trackItem);
+        });
+        
+        // Montar seção de recomendações
+        recommendationsSection.appendChild(titleDiv);
+        recommendationsSection.appendChild(trackList);
+        
+        // Event listeners para os botões de marcar/desmarcar todas
+        recommendationsSection.querySelector('[data-action="select-all"]').addEventListener('click', () => {
+            const checkboxes = recommendationsSection.querySelectorAll('.track-checkbox');
+            checkboxes.forEach(checkbox => checkbox.checked = true);
+        });
+
+        recommendationsSection.querySelector('[data-action="unselect-all"]').addEventListener('click', () => {
+            const checkboxes = recommendationsSection.querySelectorAll('.track-checkbox');
+            checkboxes.forEach(checkbox => checkbox.checked = false);
+        });
+        
+        // Adicionar à lista de artistas
+        playlistArtists.appendChild(recommendationsSection);
         
     } catch (error) {
         console.error('Erro ao carregar recomendações:', error);
     } finally {
         hideLoader();
     }
-}
-
-// Função para criar a seção de recomendações na UI
-function createRecommendationsSection(tracks) {
-    // Criar seção de recomendações
-    const recommendationsSection = document.createElement('div');
-    recommendationsSection.className = 'artist-item recommendations-section';
-    
-    // Título da seção
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'recommendations-title';
-    titleDiv.innerHTML = `
-        <h3>Músicas Recomendadas</h3>
-        <button class="toggle-all-btn" data-action="select-all">Marcar Todas</button>
-        <button class="toggle-all-btn" data-action="unselect-all">Desmarcar Todas</button>
-        <div class="recommendations-info">
-            Baseado no seu gosto musical e artistas selecionados
-        </div>
-    `;
-    
-    // Lista de faixas recomendadas
-    const trackList = document.createElement('ul');
-    trackList.className = 'track-list';
-    
-    tracks.forEach(track => {
-        const trackItem = document.createElement('li');
-        trackItem.className = 'track-item';
-        trackItem.dataset.trackUri = track.uri;
-        trackItem.dataset.trackId = track.id;
-        
-        const albumImageSrc = track.album?.images?.length > 0 ? 
-            track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
-        
-        // O artista da faixa
-        const artistName = track.artists.map(a => a.name).join(', ');
-        
-        trackItem.innerHTML = `
-            <input type="checkbox" class="track-checkbox">
-            <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
-            <div class="track-details">
-                <div class="track-name">${track.name}</div>
-                <div class="track-album">${artistName} - ${track.album?.name || ''}</div>
-            </div>
-            <div class="track-duration">${formatDuration(track.duration_ms)}</div>
-        `;
-        
-        trackList.appendChild(trackItem);
-    });
-    
-    // Montar seção de recomendações
-    recommendationsSection.appendChild(titleDiv);
-    recommendationsSection.appendChild(trackList);
-    
-    // Event listeners para os botões de marcar/desmarcar todas
-    recommendationsSection.querySelector('[data-action="select-all"]').addEventListener('click', () => {
-        const checkboxes = recommendationsSection.querySelectorAll('.track-checkbox');
-        checkboxes.forEach(checkbox => checkbox.checked = true);
-    });
-
-    recommendationsSection.querySelector('[data-action="unselect-all"]').addEventListener('click', () => {
-        const checkboxes = recommendationsSection.querySelectorAll('.track-checkbox');
-        checkboxes.forEach(checkbox => checkbox.checked = false);
-    });
-    
-    // Adicionar à lista de artistas
-    playlistArtists.appendChild(recommendationsSection);
 }
 
 // Carregar prévia das músicas dos artistas favoritos
