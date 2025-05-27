@@ -381,6 +381,109 @@ app.get('/artist-tracks/:artistId', async (req, res) => {
   }
 });
 
+// Nova rota para buscar faixas personalizadas de um artista para o usuário
+app.get('/personalized-artist-tracks/:artistId', async (req, res) => {
+  try {
+    if (!setTokenFromRequest(req)) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const { artistId } = req.params;
+    const { limit = 10, offset = 0 } = req.query;
+    
+    if (!artistId) {
+      return res.status(400).json({ error: 'Artist ID is required' });
+    }
+    
+    // Obter as 50 principais faixas do artista primeiro
+    const topTracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artistId, 'BR'));
+    
+    // Obter álbuns mais recentes
+    const albumsResult = await withRetry(() => spotifyApi.getArtistAlbums(artistId, {
+      include_groups: 'album,single',
+      limit: 5,
+      offset: 0
+    }));
+    
+    // Lista para armazenar todas as faixas
+    let allTracks = [...topTracksResult.body.tracks];
+    
+    // Adicionar algumas faixas dos álbuns mais recentes (não todas, para evitar álbuns completos)
+    for (const album of albumsResult.body.items) {
+      try {
+        const tracksResult = await withRetry(() => spotifyApi.getAlbumTracks(album.id, { limit: 3 }));
+        
+        // Filtrar faixas onde o artista requisitado é um dos artistas
+        const filteredTracks = tracksResult.body.items.filter(track => 
+          track.artists.some(artist => artist.id === artistId)
+        );
+        
+        // Adicionar detalhes do álbum para cada faixa
+        const tracksWithAlbum = filteredTracks.map(track => ({
+          ...track,
+          album: {
+            id: album.id,
+            name: album.name,
+            images: album.images
+          }
+        }));
+        
+        allTracks = [...allTracks, ...tracksWithAlbum];
+      } catch (error) {
+        console.error(`Error getting tracks for album ${album.id}:`, error);
+      }
+    }
+    
+    // Tentar obter recomendações baseadas nas faixas mais populares do artista
+    try {
+      // Usar até 3 faixas populares como seed
+      const seedTracks = topTracksResult.body.tracks.slice(0, 3).map(track => track.id);
+      
+      if (seedTracks.length > 0) {
+        const recsOptions = {
+          seed_artists: [artistId],
+          seed_tracks: seedTracks.slice(0, 2), // Limitar a 2 seeds de faixas
+          limit: 10
+        };
+        
+        const recommendationsResult = await withRetry(() => spotifyApi.getRecommendations(recsOptions));
+        
+        // Filtrar apenas faixas do artista solicitado
+        const artistRecommendations = recommendationsResult.body.tracks.filter(track => 
+          track.artists.some(artist => artist.id === artistId)
+        );
+        
+        // Adicionar as recomendações filtradas
+        allTracks = [...allTracks, ...artistRecommendations];
+      }
+    } catch (error) {
+      console.error('Error getting recommendations for artist tracks:', error);
+    }
+    
+    // Remover duplicatas (mesma música em vários resultados)
+    const uniqueTracks = [];
+    const trackIds = new Set();
+    
+    for (const track of allTracks) {
+      if (!trackIds.has(track.id)) {
+        trackIds.add(track.id);
+        uniqueTracks.push(track);
+      }
+    }
+    
+    // Aplicar offset e limit
+    const paginatedTracks = uniqueTracks.slice(
+      parseInt(offset, 10),
+      parseInt(offset, 10) + parseInt(limit, 10)
+    );
+    
+    res.status(200).json({ tracks: paginatedTracks });
+  } catch (err) {
+    console.error('Error getting personalized artist tracks:', err);
+    res.status(400).json({ error: 'Error getting personalized artist tracks' });
+  }
+});
+
 // Nova rota para buscar faixas de um artista por nome
 app.get('/search-artist-tracks', async (req, res) => {
   try {
@@ -424,15 +527,36 @@ app.get('/recommendations', async (req, res) => {
     }
     
     // Construir opções para as recomendações
-    const options = { limit: parseInt(limit, 10) };
+    const options = {
+      limit: parseInt(limit, 10),
+      min_popularity: 20  // Evitar músicas muito obscuras
+    };
     
     if (seed_tracks) {
-      options.seed_tracks = seed_tracks;
+      const tracks = seed_tracks.split(',');
+      if (tracks.length > 0) {
+        options.seed_tracks = tracks.slice(0, Math.min(tracks.length, 5));
+      }
     }
     
     if (seed_artists) {
-      options.seed_artists = seed_artists;
+      const artists = seed_artists.split(',');
+      if (artists.length > 0) {
+        options.seed_artists = artists.slice(0, Math.min(artists.length, 5));
+      }
     }
+    
+    // Garantir que não temos mais do que 5 seeds no total (limitação da API)
+    const totalSeeds = (options.seed_tracks?.length || 0) + (options.seed_artists?.length || 0);
+    if (totalSeeds > 5) {
+      // Remover excesso de seed_tracks se necessário
+      if (options.seed_tracks && options.seed_tracks.length > 0) {
+        const excessSeeds = totalSeeds - 5;
+        options.seed_tracks = options.seed_tracks.slice(0, Math.max(0, options.seed_tracks.length - excessSeeds));
+      }
+    }
+    
+    console.log('Opções de recomendação:', options);
     
     // Obter recomendações
     const recommendations = await withRetry(() => spotifyApi.getRecommendations(options));
@@ -440,7 +564,14 @@ app.get('/recommendations', async (req, res) => {
     res.status(200).json(recommendations.body);
   } catch (err) {
     console.error('Error getting recommendations:', err);
-    res.status(400).json({ error: 'Error getting recommendations' });
+    console.error('Error details:', err.message, err.stack);
+    
+    if (err.statusCode) {
+      console.error('Status code:', err.statusCode);
+      console.error('Error body:', err.body);
+    }
+    
+    res.status(400).json({ error: 'Error getting recommendations', details: err.message });
   }
 });
 

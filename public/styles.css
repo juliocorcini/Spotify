@@ -483,4 +483,26 @@ footer {
     color: #666;
     font-style: italic;
     margin-left: 10px;
+}
+
+.bottom-create-action {
+    margin-top: 40px;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-top: 1px solid #eee;
+    text-align: center;
+    position: sticky;
+    bottom: 20px;
+    z-index: 100;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+}
+
+#copy-playlist-link {
+    margin-left: 10px;
+    background-color: #444;
+}
+
+#copy-playlist-link:hover {
+    background-color: #555;
 } 

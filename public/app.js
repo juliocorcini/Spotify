@@ -233,7 +233,11 @@ function renderPlaylistDetails(artists, isPreview = false) {
         }, 0);
 
         if (recommendationsCount > 0) {
-            loadRecommendations(artists, recommendationsCount);
+            try {
+                loadRecommendations(artists, recommendationsCount);
+            } catch (error) {
+                console.error('Erro ao carregar recomendações:', error);
+            }
         }
     }
     
@@ -384,6 +388,22 @@ function renderPlaylistDetails(artists, isPreview = false) {
         // Adicionar à lista de artistas
         playlistArtists.appendChild(artistElement);
     });
+
+    // Adicionar botão de criar playlist no final da página
+    const bottomCreateButtonDiv = document.createElement('div');
+    bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
+    bottomCreateButtonDiv.innerHTML = `
+        <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
+        <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
+    `;
+    playlistArtists.appendChild(bottomCreateButtonDiv);
+    
+    // Adicionar event listeners
+    document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
+    document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
+        playlistSection.classList.add('hidden');
+        profileSection.classList.remove('hidden');
+    });
 }
 
 // Função para carregar mais faixas de um artista
@@ -395,18 +415,33 @@ async function loadMoreTracks(artistId, trackListElement, artistName) {
         const existingTrackIds = Array.from(trackListElement.querySelectorAll('.track-item'))
             .map(item => item.dataset.trackId);
         
-        // Buscar mais faixas do artista
-        const response = await fetch(`/artist-tracks/${artistId}?offset=${existingTrackIds.length}&limit=10`, {
+        // Tentar buscar mais faixas do artista baseadas no gosto do usuário
+        const response = await fetch(`/personalized-artist-tracks/${artistId}?offset=${existingTrackIds.length}&limit=10`, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`
             }
         });
         
+        // Se não tivermos faixas personalizadas ou ocorrer erro, buscar faixas normais
+        let data;
         if (!response.ok) {
-            throw new Error(`Erro ao buscar mais músicas para ${artistName}`);
+            console.log('Faixas personalizadas não disponíveis, buscando faixas populares');
+            
+            // Buscar mais faixas do artista (normal)
+            const regularResponse = await fetch(`/artist-tracks/${artistId}?offset=${existingTrackIds.length}&limit=10`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            
+            if (!regularResponse.ok) {
+                throw new Error(`Erro ao buscar mais músicas para ${artistName}`);
+            }
+            
+            data = await regularResponse.json();
+        } else {
+            data = await response.json();
         }
-        
-        const data = await response.json();
         
         // Filtrar faixas que já estão na lista
         const newTracks = data.tracks.filter(track => !existingTrackIds.includes(track.id));
@@ -541,25 +576,41 @@ async function loadRecommendations(artists, limit = 10) {
         const finalSeedArtists = seedArtists.slice(0, 2);
         
         if (finalSeedTracks.length === 0 && finalSeedArtists.length === 0) {
+            console.log('Não há seeds suficientes para recomendações');
             return; // Não há seeds suficientes
         }
         
         showLoader();
         
         // Buscar recomendações
-        const response = await fetch(`/recommendations?seed_tracks=${finalSeedTracks.join(',')}&seed_artists=${finalSeedArtists.join(',')}&limit=${limit}`, {
+        let query = '';
+        if (finalSeedTracks.length > 0) {
+            query += `seed_tracks=${finalSeedTracks.join(',')}`;
+        }
+        
+        if (finalSeedArtists.length > 0) {
+            if (query) query += '&';
+            query += `seed_artists=${finalSeedArtists.join(',')}`;
+        }
+        
+        // Adicionar parâmetros extras para melhorar recomendações
+        query += `&limit=${limit}`;
+        
+        const response = await fetch(`/recommendations?${query}`, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`
             }
         });
         
         if (!response.ok) {
-            throw new Error('Erro ao buscar recomendações');
+            console.error('Erro na resposta da API:', response.status, response.statusText);
+            throw new Error(`Erro ao buscar recomendações: ${response.status} ${response.statusText}`);
         }
         
         const data = await response.json();
         
-        if (data.tracks.length === 0) {
+        if (!data.tracks || data.tracks.length === 0) {
+            console.log('Nenhuma recomendação encontrada');
             return; // Nenhuma recomendação encontrada
         }
         
@@ -999,11 +1050,31 @@ async function confirmCreatePlaylist() {
         playlistLink.href = data.playlist.external_urls.spotify;
         playlistLink.classList.remove('hidden');
         
-        // Após criar a playlist, recarregar a página para mostrar a versão final
-        setTimeout(() => {
-            window.location.href = data.playlist.external_urls.spotify;
-        }, 2000);
+        // Rolar para o topo da página após criar a playlist
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         
+        // Criar botão para copiar link da playlist
+        if (!document.getElementById('copy-playlist-link')) {
+            const copyLinkButton = document.createElement('a');
+            copyLinkButton.id = 'copy-playlist-link';
+            copyLinkButton.className = 'btn secondary';
+            copyLinkButton.textContent = "Copiar Link";
+            copyLinkButton.href = "#";
+            copyLinkButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                navigator.clipboard.writeText(data.playlist.external_urls.spotify)
+                    .then(() => {
+                        alert('Link copiado para a área de transferência!');
+                    })
+                    .catch(err => {
+                        console.error('Erro ao copiar link:', err);
+                    });
+            });
+            
+            // Inserir o botão após o link para abrir no Spotify
+            const playlistContainer = document.getElementById('playlist-container');
+            playlistContainer.insertBefore(copyLinkButton, playlistLink.nextSibling);
+        }
     } catch (error) {
         console.error('Erro ao criar playlist:', error);
         resultMessage.textContent = 'Erro ao criar playlist. Tente novamente.';
