@@ -94,17 +94,7 @@ function checkAuth() {
 // Obter perfil do usuário
 async function fetchProfile() {
     try {
-        const response = await fetch('/me', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
-        
-        if (response.status === 401) {
-            // Token inválido, tentar refresh
-            await refreshAccessToken();
-            return fetchProfile();
-        }
+        const response = await fetchWithTokenRefresh('/me');
         
         if (!response.ok) {
             throw new Error('Error fetching profile');
@@ -422,7 +412,54 @@ function togglePreview(previewUrl, imageElement) {
     });
 }
 
-// Atualizar a função loadMoreTracks para lidar com B2B
+// Função para fazer requisições com tratamento automático de token expirado
+async function fetchWithTokenRefresh(url, options = {}) {
+    // Configurar headers padrão
+    if (!options.headers) {
+        options.headers = {};
+    }
+    
+    // Usar o token do localStorage
+    const token = localStorage.getItem('spotify_access_token');
+    if (token) {
+        options.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    try {
+        const response = await fetch(url, options);
+        
+        // Se o token expirou, tentar renovar
+        if (response.status === 401) {
+            const responseData = await response.json().catch(() => ({}));
+            
+            if (responseData.needsRefresh) {
+                console.log('Token expired, trying to refresh...');
+                
+                // Tentar renovar o token
+                const refreshSuccess = await refreshAccessToken();
+                
+                if (refreshSuccess) {
+                    // Atualizar o header com o novo token
+                    options.headers['Authorization'] = `Bearer ${localStorage.getItem('spotify_access_token')}`;
+                    
+                    // Tentar a requisição novamente
+                    return await fetch(url, options);
+                } else {
+                    // Se não conseguiu renovar, redirecionar para login
+                    showLogin();
+                    throw new Error('Token expired and refresh failed');
+                }
+            }
+        }
+        
+        return response;
+    } catch (error) {
+        console.error('Error in fetchWithTokenRefresh:', error);
+        throw error;
+    }
+}
+
+// Atualizar a função loadMoreTracks para usar o novo sistema de fetch
 async function loadMoreTracks(artistId, trackListElementId, artistName, originalName, isB2B, isSpecial) {
     try {
         showLoader();
@@ -434,18 +471,10 @@ async function loadMoreTracks(artistId, trackListElementId, artistName, original
             const searchTerms = JSON.stringify([originalName]); // Simplificado para esta implementação
             const limit = isB2B ? 20 : 10; // Dobrar para B2B
             
-            response = await fetch(`/artist-special-tracks/${artistId}?limit=${limit}&displayName=${encodeURIComponent(originalName)}&searchTerms=${encodeURIComponent(searchTerms)}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                }
-            });
+            response = await fetchWithTokenRefresh(`/artist-special-tracks/${artistId}?limit=${limit}&displayName=${encodeURIComponent(originalName)}&searchTerms=${encodeURIComponent(searchTerms)}`);
         } else {
             // Para artistas normais
-            response = await fetch(`/personalized-artist-tracks/${artistId}?limit=10&offset=10`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                }
-            });
+            response = await fetchWithTokenRefresh(`/personalized-artist-tracks/${artistId}?limit=10&offset=10`);
         }
         
         if (!response.ok) {
@@ -629,11 +658,7 @@ async function loadRecommendations(artists, limit = 10) {
         // Adicionar parâmetros extras para melhorar recomendações
         query += `&limit=${limit}`;
         
-        const response = await fetch(`/recommendations?${query}`, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
+        const response = await fetchWithTokenRefresh(`/recommendations?${query}`);
         
         if (!response.ok) {
             console.error('Erro na resposta da API:', response.status, response.statusText);
@@ -927,17 +952,7 @@ async function previewTopArtists() {
     showLoader();
     
     try {
-        const response = await fetch('/top-artists', {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            }
-        });
-        
-        if (response.status === 401) {
-            // Token inválido, tentar refresh
-            await refreshAccessToken();
-            return previewTopArtists();
-        }
+        const response = await fetchWithTokenRefresh('/top-artists');
         
         if (!response.ok) {
             throw new Error('Error fetching top artists');
@@ -952,11 +967,7 @@ async function previewTopArtists() {
         for (const artist of artists) {
             try {
                 // Obter as faixas mais populares do artista
-                const tracksResponse = await fetch(`/artist-top-tracks/${artist.id}?limit=5`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                });
+                const tracksResponse = await fetchWithTokenRefresh(`/artist-top-tracks/${artist.id}?limit=5`);
                 
                 if (!tracksResponse.ok) {
                     throw new Error(`Error fetching tracks for ${artist.name}`);
@@ -1033,11 +1044,7 @@ async function previewCustomArtists(event) {
         
         for (const artistName of artistNames) {
             try {
-                const response = await fetch(`/search-artist-special?query=${encodeURIComponent(artistName)}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                    }
-                });
+                const response = await fetchWithTokenRefresh(`/search-artist-special?query=${encodeURIComponent(artistName)}`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -1055,11 +1062,7 @@ async function previewCustomArtists(event) {
                     }
                     
                     // Buscar faixas específicas para artistas especiais
-                    const tracksResponse = await fetch(`/artist-special-tracks/${artist.id}?limit=${trackLimit}&displayName=${encodeURIComponent(artist.displayName)}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`, {
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                        }
-                    });
+                    const tracksResponse = await fetchWithTokenRefresh(`/artist-special-tracks/${artist.id}?limit=${trackLimit}&displayName=${encodeURIComponent(artist.displayName)}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`);
                     
                     if (!tracksResponse.ok) {
                         throw new Error(`HTTP error! status: ${tracksResponse.status}`);
@@ -1156,11 +1159,10 @@ async function confirmCreatePlaylist() {
                            `Playlist Personalizada (${new Date().toLocaleDateString()})`;
         
         // Criar a playlist com as faixas selecionadas
-        const response = await fetch('/create-custom-tracks-playlist', {
+        const response = await fetchWithTokenRefresh('/create-custom-tracks-playlist', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 trackUris: selectedTracks,
@@ -1237,4 +1239,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Garantir que o loader esteja escondido inicialmente
     hideLoader();
     checkAuth();
-}); 
+});
+
+// Função para mostrar mensagens de resultado
+function showResult(message, type = 'success') {
+    const resultMessage = document.getElementById('result-message');
+    resultMessage.textContent = message;
+    resultMessage.className = `result-message ${type}`;
+    resultMessage.classList.remove('hidden');
+    
+    // Esconder automaticamente após 5 segundos
+    setTimeout(() => {
+        resultMessage.classList.add('hidden');
+    }, 5000);
+} 

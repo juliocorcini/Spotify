@@ -174,7 +174,34 @@ app.get('/callback', async (req, res) => {
   }
 });
 
-// Função utilitária para tentativas com retry
+// Helper function to set token from request with better error handling
+const setTokenFromRequest = (req) => {
+  const authHeader = req.headers.authorization;
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    if (token && token !== 'null' && token !== 'undefined') {
+      spotifyApi.setAccessToken(token);
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+// Helper function to handle token refresh errors
+const handleTokenError = (error, res) => {
+  if (error.statusCode === 401 || (error.body && error.body.error && error.body.error.status === 401)) {
+    return res.status(401).json({ 
+      error: 'Token expired or invalid',
+      message: 'Please refresh your login',
+      needsRefresh: true
+    });
+  }
+  throw error;
+};
+
+// Função utilitária para tentativas com retry e melhor tratamento de token
 async function withRetry(fn, maxRetries = 3, delay = 1000) {
   let lastError;
   
@@ -182,6 +209,11 @@ async function withRetry(fn, maxRetries = 3, delay = 1000) {
     try {
       return await fn();
     } catch (error) {
+      // Se for erro de token inválido, não tentar novamente
+      if (error.statusCode === 401 || (error.body && error.body.error && error.body.error.status === 401)) {
+        throw error;
+      }
+      
       // Verificar se é um erro de rede (timeout, conexão recusada, etc.)
       const isNetworkError = error.code === 'ETIMEDOUT' || 
                             error.code === 'ENETUNREACH' || 
@@ -207,23 +239,6 @@ async function withRetry(fn, maxRetries = 3, delay = 1000) {
   
   throw lastError;
 }
-
-// Helper function to set token from request
-const setTokenFromRequest = (req) => {
-  const authHeader = req.headers.authorization;
-  let token = spotifyApi.getAccessToken();
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.split(' ')[1];
-    spotifyApi.setAccessToken(token);
-  }
-  
-  if (!token) {
-    return false;
-  }
-  
-  return true;
-};
 
 // Route to get user profile
 app.get('/me', async (req, res) => {
@@ -1454,7 +1469,7 @@ function processArtistName(artistName) {
 app.get('/search-artist-special', async (req, res) => {
   try {
     if (!setTokenFromRequest(req)) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: 'No valid token provided' });
     }
     
     const { query } = req.query;
@@ -1490,6 +1505,10 @@ app.get('/search-artist-special', async (req, res) => {
         // Adicionar resultados dessa busca ao array geral
         allResults.push(...result.body.artists.items);
       } catch (error) {
+        // Se for erro de token, retornar imediatamente
+        if (error.statusCode === 401) {
+          return handleTokenError(error, res);
+        }
         console.error(`Error searching for term "${searchTerm}":`, error);
       }
     }
@@ -1514,39 +1533,38 @@ app.get('/search-artist-special', async (req, res) => {
     });
     
   } catch (err) {
+    // Se for erro de token, usar o handler especial
+    if (err.statusCode === 401) {
+      return handleTokenError(err, res);
+    }
     console.error('Error in special artist search:', err);
     res.status(400).json({ error: 'Error searching for special artist format' });
   }
 });
 
-// Nova rota para obter faixas para artistas especiais (B2B, special sets)
+// Rota para obter faixas de artistas especiais (B2B, special sets)
 app.get('/artist-special-tracks/:artistId', async (req, res) => {
   try {
     if (!setTokenFromRequest(req)) {
-      return res.status(401).json({ error: 'No token provided' });
+      return res.status(401).json({ error: 'No valid token provided' });
     }
     
     const { artistId } = req.params;
     const { limit = 10, displayName, searchTerms } = req.query;
     
-    if (!artistId || !displayName) {
-      return res.status(400).json({ error: 'Artist ID and display name are required' });
-    }
-    
-    // Parse searchTerms if provided as a string
+    // Parse search terms se fornecido
     let terms = [];
-    try {
-      terms = searchTerms ? JSON.parse(searchTerms) : [];
-    } catch (error) {
-      console.error('Error parsing search terms:', error);
-      terms = [];
+    if (searchTerms) {
+      try {
+        terms = JSON.parse(searchTerms);
+      } catch (e) {
+        terms = [displayName || ''];
+      }
     }
     
-    // Processar o nome do artista
-    const processedArtist = processArtistName(displayName);
-    
-    // Se não temos termos passados, usar os do processamento
+    // Se não temos termos, processar o displayName
     if (terms.length === 0) {
+      const processedArtist = processArtistName(displayName || '');
       terms = processedArtist.searchTerms;
     }
     
@@ -1560,7 +1578,7 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
     for (const [index, term] of terms.entries()) {
       try {
         // Para B2B sets, buscamos músicas que contenham ambos os artistas
-        if (processedArtist.isB2B && index < 2) {
+        if (displayName && displayName.includes('B2B') && index < 2) {
           // Buscar colaborações diretas entre os artistas
           const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
           
@@ -1574,7 +1592,7 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
           }
         } 
         // Para special sets, buscamos músicas do artista com o tipo especial
-        else if (processedArtist.isSpecial && index === 0) {
+        else if (displayName && displayName.includes('(') && displayName.includes(')') && index === 0) {
           // Buscar faixas específicas para o tipo de set especial
           const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
           
@@ -1586,58 +1604,69 @@ app.get('/artist-special-tracks/:artistId', async (req, res) => {
             allTracks = [...allTracks, ...tracksWithPreview];
           }
         }
-        // Caso seja um artista individual (seja parte de um B2B ou artista normal)
+        // Para artistas normais ou como fallback
         else {
-          // Obter o ID do artista através da busca
-          const artistResult = await withRetry(() => spotifyApi.searchArtists(term, { limit: 1 }));
+          const artistTracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artistId, 'US'));
           
-          if (artistResult.body.artists && artistResult.body.artists.items.length > 0) {
-            const foundArtistId = artistResult.body.artists.items[0].id;
-            
-            // Buscar faixas populares deste artista
-            const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(foundArtistId, 'BR'));
-            
-            if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
-              // Limitar ao número desejado por termo e adicionar preview_url
-              const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm).map(track => ({
-                ...track,
-                preview_url: track.preview_url || null
-              }));
-              allTracks = [...allTracks, ...topTracks];
-            }
+          if (artistTracksResult.body.tracks && artistTracksResult.body.tracks.length > 0) {
+            const tracksWithPreview = artistTracksResult.body.tracks.map(track => ({
+              ...track,
+              preview_url: track.preview_url || null
+            }));
+            allTracks = [...allTracks, ...tracksWithPreview];
           }
         }
       } catch (error) {
-        console.error(`Error fetching tracks for term "${term}":`, error);
+        // Se for erro de token, retornar imediatamente
+        if (error.statusCode === 401) {
+          return handleTokenError(error, res);
+        }
+        console.error(`Error searching for term "${term}":`, error);
+        // Continuar com outros termos mesmo se um falhar
       }
     }
     
-    // Remover duplicatas baseadas no ID da faixa
-    const uniqueTracks = [];
-    const trackIds = new Set();
+    // Remover duplicatas baseado no ID da faixa
+    const uniqueTracks = allTracks.filter((track, index, self) => 
+      index === self.findIndex(t => t.id === track.id)
+    );
     
-    for (const track of allTracks) {
-      if (!trackIds.has(track.id)) {
-        trackIds.add(track.id);
-        uniqueTracks.push(track);
-      }
-    }
-    
-    // Limitar ao número solicitado
+    // Limitar o número de faixas retornadas
     const limitedTracks = uniqueTracks.slice(0, parseInt(limit, 10));
     
-    // Retornar as faixas encontradas
+    // Formatar a resposta para incluir informações adicionais necessárias
+    const formattedTracks = limitedTracks.map(track => ({
+      id: track.id,
+      name: track.name,
+      uri: track.uri,
+      duration_ms: track.duration_ms,
+      preview_url: track.preview_url,
+      artists: track.artists.map(artist => ({
+        id: artist.id,
+        name: artist.name
+      })),
+      album: {
+        id: track.album.id,
+        name: track.album.name,
+        images: track.album.images || [],
+        image: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
+      }
+    }));
+    
     res.status(200).json({
-      displayName: displayName,
-      originalName: processedArtist.originalName,
-      isB2B: processedArtist.isB2B,
-      isSpecial: processedArtist.isSpecial,
-      tracks: limitedTracks
+      tracks: formattedTracks,
+      total: formattedTracks.length,
+      searchTerms: terms,
+      displayName: displayName
     });
     
   } catch (err) {
-    console.error('Error getting tracks for special artist:', err);
-    res.status(400).json({ error: 'Error getting tracks for special artist format' });
+    // Se for erro de token, usar o handler especial
+    if (err.statusCode === 401) {
+      return handleTokenError(err, res);
+    }
+    console.error('Error getting special artist tracks:', err);
+    res.status(400).json({ error: 'Error getting special artist tracks' });
   }
 });
 
