@@ -91,15 +91,67 @@ function registerUser(userData) {
   saveData(USERS_DATA_FILE, users);
 }
 
+// Função para excluir dados de usuário
+function deleteUserData(userId) {
+  // Remover o usuário da lista de usuários
+  const userIndex = users.findIndex(u => u.id === userId);
+  if (userIndex >= 0) {
+    users.splice(userIndex, 1);
+    saveData(USERS_DATA_FILE, users);
+  }
+  
+  // Remover as playlists associadas ao usuário
+  const userPlaylists = playlists.filter(p => p.userId === userId);
+  if (userPlaylists.length > 0) {
+    playlists = playlists.filter(p => p.userId !== userId);
+    saveData(PLAYLISTS_DATA_FILE, playlists);
+  }
+  
+  return {
+    success: true,
+    message: 'Dados do usuário excluídos com sucesso'
+  };
+}
+
+// Função para limitar dados armazenados sobre playlists
+function limitPlaylistData(playlistData) {
+  // Remover dados desnecessários para conformidade com a política do Spotify
+  const limitedData = { ...playlistData };
+  
+  // Limitar histórico de playlists por usuário (manter apenas as 10 mais recentes)
+  const userPlaylists = playlists.filter(p => p.userId === playlistData.userId);
+  if (userPlaylists.length >= 10) {
+    // Ordenar playlists por data de criação (mais antigas primeiro)
+    const sortedPlaylists = [...userPlaylists].sort((a, b) => 
+      new Date(a.createdAt) - new Date(b.createdAt)
+    );
+    
+    // Remover as playlists mais antigas que excedem o limite
+    const playlistsToRemove = sortedPlaylists.slice(0, userPlaylists.length - 9);
+    playlistsToRemove.forEach(oldPlaylist => {
+      const index = playlists.findIndex(p => p.id === oldPlaylist.id);
+      if (index >= 0) {
+        playlists.splice(index, 1);
+      }
+    });
+    
+    // Salvar a lista atualizada
+    saveData(PLAYLISTS_DATA_FILE, playlists);
+  }
+  
+  return limitedData;
+}
+
 // Função para registrar playlist
 function registerPlaylist(playlistData, userId, extraData = {}) {
-  playlists.push({
+  const limitedPlaylistData = limitPlaylistData({
     ...playlistData,
     userId,
     createdAt: new Date().toISOString(),
     ...extraData
   });
   
+  playlists.push(limitedPlaylistData);
   saveData(PLAYLISTS_DATA_FILE, playlists);
 }
 
@@ -694,6 +746,32 @@ app.post('/refresh', async (req, res) => {
   } catch (err) {
     console.error('Error refreshing token:', err);
     res.status(400).json({ error: 'Error refreshing token' });
+  }
+});
+
+// Rota para excluir dados do usuário
+app.delete('/api/user-data/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { authorization } = req.headers;
+    
+    if (!authorization || !authorization.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    // Verificar se o token pertence ao usuário que está sendo excluído
+    spotifyApi.setAccessToken(authorization.split(' ')[1]);
+    const userInfo = await spotifyApi.getMe();
+    
+    if (userInfo.body.id !== userId) {
+      return res.status(403).json({ error: 'Forbidden - You can only delete your own data' });
+    }
+    
+    const result = deleteUserData(userId);
+    res.status(200).json(result);
+  } catch (err) {
+    console.error('Error deleting user data:', err);
+    res.status(500).json({ error: 'Error deleting user data' });
   }
 });
 

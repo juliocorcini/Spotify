@@ -140,8 +140,102 @@ async function showProfile() {
         } else {
             profileImage.src = 'https://placehold.co/150x150?text=No+Image';
         }
+        
+        // Adicionar botões de controle de conta
+        const profileContainer = document.getElementById('profile-container');
+        
+        // Criar div para os botões se não existir
+        let accountControls = document.getElementById('account-controls');
+        if (!accountControls) {
+            accountControls = document.createElement('div');
+            accountControls.id = 'account-controls';
+            accountControls.className = 'account-controls';
+            profileContainer.appendChild(accountControls);
+        }
+        
+        // Botão de desconectar
+        if (!document.getElementById('disconnect-button')) {
+            const disconnectButton = document.createElement('button');
+            disconnectButton.id = 'disconnect-button';
+            disconnectButton.className = 'btn tertiary disconnect-btn';
+            disconnectButton.textContent = 'Desconectar Conta';
+            disconnectButton.addEventListener('click', disconnectAccount);
+            accountControls.appendChild(disconnectButton);
+        }
+        
+        // Botão de excluir dados
+        if (!document.getElementById('delete-data-button')) {
+            const deleteButton = document.createElement('button');
+            deleteButton.id = 'delete-data-button';
+            deleteButton.className = 'btn tertiary delete-btn';
+            deleteButton.textContent = 'Excluir Meus Dados';
+            deleteButton.addEventListener('click', requestDataDeletion);
+            accountControls.appendChild(deleteButton);
+        }
     } catch (error) {
         console.error('Error showing profile:', error);
+    } finally {
+        // Garantir que o loader seja escondido
+        hideLoader();
+    }
+}
+
+// Função para desconectar a conta
+function disconnectAccount() {
+    if (confirm('Tem certeza que deseja desconectar sua conta do Spotify? Você precisará autorizar novamente para usar o aplicativo.')) {
+        // Limpar tokens e dados de autenticação
+        localStorage.removeItem('spotify_access_token');
+        localStorage.removeItem('spotify_refresh_token');
+        localStorage.removeItem('spotify_token_expiry');
+        
+        // Mostrar mensagem de sucesso
+        alert('Sua conta foi desconectada com sucesso.');
+        
+        // Redirecionar para a tela de login
+        showLogin();
+    }
+}
+
+// Função para solicitar exclusão de dados
+async function requestDataDeletion() {
+    if (confirm('ATENÇÃO: Esta ação excluirá permanentemente todos os seus dados em nossos servidores, incluindo histórico de playlists criadas. Esta ação não pode ser desfeita. Deseja continuar?')) {
+        
+        try {
+            showLoader();
+            
+            // Obter ID do usuário atual
+            const profile = await fetchProfile();
+            if (!profile || !profile.id) {
+                throw new Error('Não foi possível obter o ID do usuário');
+            }
+            
+            // Enviar solicitação para excluir dados
+            const response = await fetch(`/api/user-data/${profile.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Falha ao excluir dados');
+            }
+            
+            // Desconectar a conta após exclusão bem-sucedida
+            localStorage.removeItem('spotify_access_token');
+            localStorage.removeItem('spotify_refresh_token');
+            localStorage.removeItem('spotify_token_expiry');
+            
+            alert('Seus dados foram excluídos com sucesso. Você será redirecionado para a página inicial.');
+            showLogin();
+            
+        } catch (error) {
+            console.error('Erro ao excluir dados:', error);
+            alert(`Erro ao excluir dados: ${error.message}`);
+        } finally {
+            hideLoader();
+        }
     }
 }
 

@@ -126,6 +126,41 @@ h3 {
     color: #666;
 }
 
+.disconnect-btn {
+    margin-top: 15px;
+    font-size: 0.9rem;
+    padding: 8px 16px;
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    color: #d32f2f;
+}
+
+.disconnect-btn:hover {
+    background-color: #ffebee;
+    border-color: #ffcdd2;
+}
+
+.delete-btn {
+    margin-top: 10px;
+    font-size: 0.9rem;
+    padding: 8px 16px;
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    color: #d32f2f;
+}
+
+.delete-btn:hover {
+    background-color: #ffebee;
+    border-color: #ffcdd2;
+    color: #b71c1c;
+}
+
+.account-controls {
+    display: flex;
+    flex-direction: column;
+    margin-top: 20px;
+}
+
 .actions {
     margin-top: 20px;
     padding-top: 20px;
@@ -336,6 +371,21 @@ footer {
 }
 
 .admin-link a:hover {
+    color: #1DB954;
+    text-decoration: underline;
+}
+
+.legal-links {
+    margin-top: 5px;
+    font-size: 0.85rem;
+}
+
+.legal-links a {
+    color: #999;
+    text-decoration: none;
+}
+
+.legal-links a:hover {
     color: #1DB954;
     text-decoration: underline;
 }
