@@ -507,11 +507,23 @@ function renderPlaylistDetails(artists, isPreview = false) {
                         // Música individual de um dos artistas
                         artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
                     }
+                    
+                    // Adicionar informação detalhada para debug
+                    if (track.allTrackArtists && track.allTrackArtists.length > 0) {
+                        const debugInfo = `<div class="track-debug-info" style="font-size: 0.7em; color: #999; margin-top: 2px;">
+                            🎤 Todos os artistas: ${track.allTrackArtists.map(a => a.name).join(', ')}
+                            ${track.b2bArtistsCount ? ` | 🤝 B2B: ${track.b2bArtistsCount}` : ''}
+                        </div>`;
+                        artistSourceHtml += debugInfo;
+                    }
                 } else if (track.fromArtist) {
                     artistSourceHtml = `<div class="track-artist-source">🎵 Artista: ${track.fromArtist.name}</div>`;
                 } else if (track.isSpecialSet) {
                     artistSourceHtml = `<span class="special-set-indicator">${track.specialType}</span>`;
                 }
+                
+                // Debug para verificar o trackId
+                console.log(`🔍 Creating track item - ID: ${track.id}, Name: ${track.name}, Preview: ${track.preview_url ? 'available' : 'not available'}`);
                 
                 trackItem.innerHTML = `
                     <input type="checkbox" class="track-checkbox" checked>
@@ -606,7 +618,49 @@ function addPreviewEventListeners(trackItem) {
         const trackId = trackItem.dataset.trackId;
         const previewUrl = trackImage.dataset.previewUrl;
         
-        console.log(`🎵 Preview clicado - trackId: ${trackId}, previewUrl: "${previewUrl}"`);
+        console.log(`🎵 Preview clicado - trackId: "${trackId}", previewUrl: "${previewUrl}"`);
+        console.log(`🔍 TrackItem dataset:`, trackItem.dataset);
+        console.log(`🔍 TrackImage dataset:`, trackImage.dataset);
+        
+        // Se não há preview URL, usar o serviço de preview
+        if (!previewUrl || previewUrl === '') {
+            console.log(`🔄 No preview URL available, using preview service for trackId: ${trackId}`);
+            if (trackId && trackId !== 'null' && trackId !== '') {
+                // Obter nome da música e artista para buscar preview
+                const trackName = trackItem.querySelector('.track-name')?.textContent || '';
+                const trackAlbum = trackItem.querySelector('.track-album')?.textContent || '';
+                
+                console.log(`🎵 Using preview service for: ${trackName} - Album: ${trackAlbum}`);
+                
+                // Usar o serviço de preview
+                fetch(`/track-preview/${trackId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.preview_url) {
+                        console.log(`✅ Preview encontrado pelo serviço: ${data.preview_url}`);
+                        // Atualizar o dataset e tocar
+                        trackImage.dataset.previewUrl = data.preview_url;
+                        toggleTrackPreview(data.preview_url, trackImage.parentElement, trackId);
+                    } else {
+                        console.log(`❌ Nenhum preview encontrado pelo serviço`);
+                        alert('Preview não disponível para esta música.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro ao buscar preview:', error);
+                    alert('Erro ao buscar preview da música.');
+                });
+                return;
+            } else {
+                console.error(`❌ TrackId inválido: ${trackId}`);
+                alert('Erro: ID da música não disponível.');
+                return;
+            }
+        }
         
         toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
     };

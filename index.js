@@ -246,12 +246,14 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
     // Array para armazenar todas as faixas
     let allTracks = [];
     
-    // Se é B2B e temos artistas individuais, buscar faixas de cada um
+    // Se é B2B e temos artistas individuais, implementar busca balanceada
     if (processedArtist.isB2B && artists.length > 0) {
-        const tracksPerArtist = Math.ceil(actualLimit / artists.length);
+        console.log(`🎧 B2B Processing for: ${artists.map(a => a.name).join(' B2B ')}`);
         
         // Primeiro, buscar colaborações entre os artistas
         try {
+            console.log(`🔍 Searching for collaborations between artists...`);
+            
             // Criar termos de busca para colaborações
             const collaborationQueries = [];
             
@@ -266,102 +268,43 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
             // Buscar colaborações usando cada query
             for (const query of collaborationQueries) {
                 try {
-                    const searchResult = await withRetry(() => spotifyApi.search(query, ['track'], { limit: actualLimit }));
+                    const searchResult = await withRetry(() => spotifyApi.search(query, ['track'], { limit: 50 }));
                     
                     if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-                        // Filtrar apenas faixas onde PELO MENOS UM dos artistas do B2B está creditado
-                        const relevantTracks = searchResult.body.tracks.items.filter(track => {
-                            const trackArtistIds = track.artists.map(artist => artist.id);
-                            // Verificar se pelo menos 1 dos artistas B2B está na faixa
-                            const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
-                            return foundArtists.length >= 1;
-                        });
-                        
-                        // Separar colaborações (2+ artistas B2B) de outras (1 artista B2B)
-                        const collaborationTracks = relevantTracks.filter(track => {
+                        // Filtrar apenas faixas onde AMBOS os artistas do B2B estão creditados
+                        const collaborationTracks = searchResult.body.tracks.items.filter(track => {
                             const trackArtistIds = track.artists.map(artist => artist.id);
                             const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
-                            return foundArtists.length >= 2;
+                            return foundArtists.length >= 2; // Ambos os artistas devem estar presentes
                         });
                         
-                        const otherRelevantTracks = relevantTracks.filter(track => {
-                            const trackArtistIds = track.artists.map(artist => artist.id);
-                            const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
-                            return foundArtists.length === 1;
-                        });
-                        
-                        // Adicionar as colaborações encontradas com prioridade
+                        // Adicionar as colaborações encontradas com prioridade máxima
                         collaborationTracks.forEach(track => {
-                            // Determinar quais artistas B2B estão creditados nesta faixa
                             const b2bArtistsInTrack = artists.filter(artist => 
                                 track.artists.some(trackArtist => trackArtist.id === artist.id)
                             );
                             
-                            // Se há pelo menos 2 artistas B2B na faixa, é uma colaboração real
-                            const isRealCollaboration = b2bArtistsInTrack.length >= 2;
-                            
-                            // Debug log para entender o que está acontecendo
-                            console.log(`🎵 Track: "${track.name}"`);
-                            console.log(`🎤 All track artists: ${track.artists.map(a => a.name).join(', ')}`);
-                            console.log(`🤝 B2B artists in track: ${b2bArtistsInTrack.map(a => a.name).join(', ')}`);
-                            console.log(`✅ Is real collaboration: ${isRealCollaboration}`);
+                            console.log(`🎭 Real collaboration found: "${track.name}" by ${track.artists.map(a => a.name).join(', ')}`);
                             
                             const trackWithInfo = {
                                 ...track,
                                 fromArtist: {
-                                    id: b2bArtistsInTrack[0]?.id || artists[0].id,
-                                    name: b2bArtistsInTrack[0]?.name || artists[0].name,
-                                    searchTerm: b2bArtistsInTrack[0]?.searchTerm || artists[0].searchTerm
+                                    id: 'collaboration',
+                                    name: b2bArtistsInTrack.map(a => a.name).join(' & '),
+                                    searchTerm: query
                                 },
                                 isFromB2B: true,
-                                isCollaboration: isRealCollaboration,
-                                collaboratingArtists: isRealCollaboration ? 
-                                    b2bArtistsInTrack.map(artist => ({ 
-                                        id: artist.id, 
-                                        name: artist.name 
-                                    })) : [],
-                                // Adicionar informação sobre todos os artistas da faixa
+                                isCollaboration: true,
+                                collaboratingArtists: b2bArtistsInTrack.map(artist => ({ 
+                                    id: artist.id, 
+                                    name: artist.name 
+                                })),
                                 allTrackArtists: track.artists.map(artist => ({
                                     id: artist.id,
                                     name: artist.name
                                 })),
-                                // Marcar quantos dos artistas B2B estão nesta faixa
-                                b2bArtistsCount: b2bArtistsInTrack.length
-                            };
-                            
-                            allTracks.push(trackWithInfo);
-                        });
-                        
-                        // Adicionar outras faixas relevantes (com apenas 1 artista B2B)
-                        otherRelevantTracks.forEach(track => {
-                            // Determinar qual artista B2B está creditado nesta faixa
-                            const b2bArtistInTrack = artists.find(artist => 
-                                track.artists.some(trackArtist => trackArtist.id === artist.id)
-                            );
-                            
-                            console.log(`🎵 Other track: "${track.name}"`);
-                            console.log(`🎤 All track artists: ${track.artists.map(a => a.name).join(', ')}`);
-                            console.log(`🤝 B2B artist in track: ${b2bArtistInTrack?.name || 'None'}`);
-                            
-                            const trackWithInfo = {
-                                ...track,
-                                fromArtist: {
-                                    id: b2bArtistInTrack?.id || artists[0].id,
-                                    name: b2bArtistInTrack?.name || artists[0].name,
-                                    searchTerm: b2bArtistInTrack?.searchTerm || artists[0].searchTerm
-                                },
-                                isFromB2B: true,
-                                isCollaboration: false,
-                                collaboratingArtists: [],
-                                // Adicionar informação sobre todos os artistas da faixa
-                                allTrackArtists: track.artists.map(artist => ({
-                                    id: artist.id,
-                                    name: artist.name
-                                })),
-                                // Marcar quantos dos artistas B2B estão nesta faixa
-                                b2bArtistsCount: 1,
-                                // Marcar se tem outros artistas além do B2B
-                                hasOtherArtists: track.artists.length > 1
+                                b2bArtistsCount: b2bArtistsInTrack.length,
+                                hasOtherArtists: track.artists.length > b2bArtistsInTrack.length
                             };
                             
                             allTracks.push(trackWithInfo);
@@ -375,19 +318,32 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
             console.error('Error searching for B2B collaborations:', error);
         }
         
-        // Depois buscar faixas individuais de cada artista (se ainda precisarmos de mais)
+        console.log(`✅ Found ${allTracks.length} collaboration tracks`);
+        
+        // Buscar faixas individuais de cada artista para complementar
         const remainingLimit = Math.max(0, actualLimit - allTracks.length);
         if (remainingLimit > 0) {
             const tracksPerIndividualArtist = Math.ceil(remainingLimit / artists.length);
+            console.log(`🎵 Need ${remainingLimit} more tracks, ${tracksPerIndividualArtist} per artist`);
             
             for (const artist of artists) {
                 try {
+                    console.log(`🔍 Fetching top tracks for ${artist.name}...`);
+                    
                     // Buscar faixas populares do artista
                     const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
                     
                     if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
+                        // Filtrar faixas que já não estão na lista (evitar duplicatas)
+                        const existingTrackIds = new Set(allTracks.map(track => track.id));
+                        const newTracks = tracksResult.body.tracks
+                            .filter(track => !existingTrackIds.has(track.id))
+                            .slice(0, tracksPerIndividualArtist);
+                        
+                        console.log(`➕ Adding ${newTracks.length} tracks from ${artist.name}`);
+                        
                         // Adicionar informação sobre qual artista do B2B cada faixa pertence
-                        const tracksWithArtistInfo = tracksResult.body.tracks.slice(0, tracksPerIndividualArtist).map(track => ({
+                        const tracksWithArtistInfo = newTracks.map(track => ({
                             ...track,
                             fromArtist: {
                                 id: artist.id,
@@ -395,82 +351,114 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
                                 searchTerm: artist.searchTerm
                             },
                             isFromB2B: true,
-                            isCollaboration: false
+                            isCollaboration: false,
+                            collaboratingArtists: [],
+                            allTrackArtists: track.artists.map(artist => ({
+                                id: artist.id,
+                                name: artist.name
+                            })),
+                            b2bArtistsCount: 1,
+                            hasOtherArtists: track.artists.length > 1
                         }));
                         
                         allTracks = [...allTracks, ...tracksWithArtistInfo];
                     }
                     
-                    // Também buscar algumas faixas de álbuns para maior variedade
-                    try {
-                        const albumsResult = await withRetry(() => spotifyApi.getArtistAlbums(artist.id, {
-                            include_groups: 'album,single',
-                            limit: 3,
-                            offset: 0
-                        }));
-                        
-                        for (const album of albumsResult.body.items.slice(0, 2)) { // Apenas 2 álbuns por artista
-                            try {
-                                const albumTracksResult = await withRetry(() => spotifyApi.getAlbumTracks(album.id, { limit: 3 }));
-                                
-                                // Filtrar faixas e obter dados completos incluindo preview_url
-                                const filteredTracks = albumTracksResult.body.items
-                                    .filter(track => track.artists.some(trackArtist => trackArtist.id === artist.id))
-                                    .slice(0, 2); // Máximo 2 faixas por álbum
-                                
-                                // Para cada track filtrada, obter dados completos incluindo preview_url
-                                for (const track of filteredTracks) {
+                    // Se ainda precisamos de mais faixas, buscar em álbuns
+                    const currentArtistTracks = allTracks.filter(track => 
+                        track.fromArtist && track.fromArtist.id === artist.id
+                    ).length;
+                    
+                    if (currentArtistTracks < tracksPerIndividualArtist) {
+                        try {
+                            console.log(`🎵 Searching albums for more ${artist.name} tracks...`);
+                            
+                            const albumsResult = await withRetry(() => spotifyApi.getArtistAlbums(artist.id, {
+                                include_groups: 'album,single',
+                                limit: 10
+                            }));
+                            
+                            if (albumsResult.body.items && albumsResult.body.items.length > 0) {
+                                for (const album of albumsResult.body.items.slice(0, 5)) {
                                     try {
-                                        const fullTrackResult = await withRetry(() => spotifyApi.getTrack(track.id));
-                                        const fullTrack = fullTrackResult.body;
+                                        const albumTracksResult = await withRetry(() => spotifyApi.getAlbumTracks(album.id, { limit: 50 }));
                                         
-                                        const albumTrackWithFullData = {
-                                            ...fullTrack,
-                                            album: {
-                                                ...fullTrack.album,
-                                                id: album.id,
-                                                name: album.name,
-                                                images: album.images
-                                            },
-                                            fromArtist: {
-                                                id: artist.id,
-                                                name: artist.name,
-                                                searchTerm: artist.searchTerm
-                                            },
-                                            isFromB2B: true,
-                                            isCollaboration: false
-                                        };
-                                        
-                                        allTracks.push(albumTrackWithFullData);
+                                        if (albumTracksResult.body.items && albumTracksResult.body.items.length > 0) {
+                                            const existingTrackIds = new Set(allTracks.map(track => track.id));
+                                            const filteredTracks = albumTracksResult.body.items
+                                                .filter(track => !existingTrackIds.has(track.id))
+                                                .slice(0, 2); // Máximo 2 faixas por álbum
+                                            
+                                            // Para cada track filtrada, obter dados completos incluindo preview_url
+                                            for (const track of filteredTracks) {
+                                                try {
+                                                    const fullTrackResult = await withRetry(() => spotifyApi.getTrack(track.id));
+                                                    const fullTrack = fullTrackResult.body;
+                                                    
+                                                    const albumTrackWithFullData = {
+                                                        ...fullTrack,
+                                                        album: {
+                                                            ...fullTrack.album,
+                                                            id: album.id,
+                                                            name: album.name,
+                                                            images: album.images
+                                                        },
+                                                        fromArtist: {
+                                                            id: artist.id,
+                                                            name: artist.name,
+                                                            searchTerm: artist.searchTerm
+                                                        },
+                                                        isFromB2B: true,
+                                                        isCollaboration: false,
+                                                        collaboratingArtists: [],
+                                                        allTrackArtists: fullTrack.artists.map(artist => ({
+                                                            id: artist.id,
+                                                            name: artist.name
+                                                        })),
+                                                        b2bArtistsCount: 1,
+                                                        hasOtherArtists: fullTrack.artists.length > 1
+                                                    };
+                                                    
+                                                    allTracks.push(albumTrackWithFullData);
+                                                } catch (error) {
+                                                    console.error(`Error getting full track data for ${track.id}:`, error);
+                                                    // Se falhar ao obter dados completos, usar dados básicos sem preview_url
+                                                    const albumTrackBasic = {
+                                                        ...track,
+                                                        preview_url: null, // Marcar como não disponível
+                                                        album: {
+                                                            id: album.id,
+                                                            name: album.name,
+                                                            images: album.images
+                                                        },
+                                                        fromArtist: {
+                                                            id: artist.id,
+                                                            name: artist.name,
+                                                            searchTerm: artist.searchTerm
+                                                        },
+                                                        isFromB2B: true,
+                                                        isCollaboration: false,
+                                                        collaboratingArtists: [],
+                                                        allTrackArtists: track.artists.map(artist => ({
+                                                            id: artist.id,
+                                                            name: artist.name
+                                                        })),
+                                                        b2bArtistsCount: 1,
+                                                        hasOtherArtists: track.artists.length > 1
+                                                    };
+                                                    
+                                                    allTracks.push(albumTrackBasic);
+                                                }
+                                            }
+                                        }
                                     } catch (error) {
-                                        console.error(`Error getting full track data for ${track.id}:`, error);
-                                        // Se falhar ao obter dados completos, usar dados básicos sem preview_url
-                                        const albumTrackBasic = {
-                                            ...track,
-                                            preview_url: null, // Marcar como não disponível
-                                            album: {
-                                                id: album.id,
-                                                name: album.name,
-                                                images: album.images
-                                            },
-                                            fromArtist: {
-                                                id: artist.id,
-                                                name: artist.name,
-                                                searchTerm: artist.searchTerm
-                                            },
-                                            isFromB2B: true,
-                                            isCollaboration: false
-                                        };
-                                        
-                                        allTracks.push(albumTrackBasic);
+                                        console.error(`Error getting album tracks for ${album.id}:`, error);
                                     }
                                 }
-                            } catch (error) {
-                                console.error(`Error getting album tracks for ${album.id}:`, error);
                             }
+                        } catch (error) {
+                            console.error(`Error getting albums for artist ${artist.id}:`, error);
                         }
-                    } catch (error) {
-                        console.error(`Error getting albums for artist ${artist.id}:`, error);
                     }
                 } catch (error) {
                     console.error(`Error fetching tracks for B2B artist "${artist.name}":`, error);
