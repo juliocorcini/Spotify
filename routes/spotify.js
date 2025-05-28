@@ -52,10 +52,14 @@ router.get('/search-artist', requireSpotifyAuth, async (req, res) => {
 router.get('/track-preview/:trackId', requireSpotifyAuth, async (req, res) => {
   try {
     const { trackId } = req.params;
+    console.log(`🎵 Buscando preview para track ID: ${trackId}`);
     
     // Primeiro, obter informações da música do Spotify
     const trackInfo = await withRetry(() => spotifyApi.getTrack(trackId));
     const track = trackInfo.body;
+    
+    console.log(`📀 Track encontrada: "${track.name}" por ${track.artists.map(a => a.name).join(', ')}`);
+    console.log(`🎧 Preview URL do Spotify: ${track.preview_url || 'null'}`);
     
     // Se já tem preview_url do Spotify, retornar
     if (track.preview_url) {
@@ -68,7 +72,11 @@ router.get('/track-preview/:trackId', requireSpotifyAuth, async (req, res) => {
     
     // Senão, buscar usando o preview finder
     const artistName = track.artists && track.artists[0] ? track.artists[0].name : '';
+    console.log(`🔍 Buscando preview alternativo para: "${track.name}" - "${artistName}"`);
+    
     const previewUrl = await findPreviewUrl(track.name, artistName, track.id);
+    
+    console.log(`🎶 Preview finder resultado: ${previewUrl || 'null'}`);
     
     if (previewUrl) {
       res.json({ 
@@ -85,7 +93,7 @@ router.get('/track-preview/:trackId', requireSpotifyAuth, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Erro ao buscar preview:', error);
+    console.error('❌ Erro ao buscar preview:', error);
     res.status(500).json({ 
       success: false, 
       error: 'Erro interno do servidor',

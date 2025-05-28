@@ -241,10 +241,30 @@ async function playTrackPreview(previewUrl, trackImageContainer, trackId = null)
                 }
             });
             
-            const result = await response.json();
-            if (result.success && result.preview_url) {
-                finalPreviewUrl = result.preview_url;
-                console.log(`Preview encontrado via ${result.source}:`, finalPreviewUrl);
+            if (response.status === 401) {
+                // Token inválido, tentar refresh
+                await refreshAccessToken();
+                // Tentar novamente após refresh
+                const retryResponse = await fetch(`/track-preview/${trackId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    }
+                });
+                const retryResult = await retryResponse.json();
+                if (retryResult.success && retryResult.preview_url) {
+                    finalPreviewUrl = retryResult.preview_url;
+                    console.log(`Preview encontrado via ${retryResult.source}:`, finalPreviewUrl);
+                } else {
+                    console.log('Preview não disponível após retry:', retryResult.message);
+                }
+            } else {
+                const result = await response.json();
+                if (result.success && result.preview_url) {
+                    finalPreviewUrl = result.preview_url;
+                    console.log(`Preview encontrado via ${result.source}:`, finalPreviewUrl);
+                } else {
+                    console.log('Preview não disponível:', result.message || 'Motivo não especificado');
+                }
             }
         } catch (error) {
             console.error('Erro ao buscar preview:', error);
@@ -304,30 +324,6 @@ function toggleTrackPreview(previewUrl, trackImageContainer, trackId = null) {
 function isSpecialArtistFormat(artistName) {
     if (!artistName) return false;
     return artistName.includes('B2B') || (artistName.includes('(') && artistName.includes(')'));
-}
-
-// Função para adicionar botões flutuantes no final
-function addBottomButtons() {
-    // Verificar se já existem os botões para evitar duplicação
-    if (document.getElementById('bottom-confirm-create-playlist')) {
-        return; // Botões já existem
-    }
-    
-    const bottomCreateButtonDiv = document.createElement('div');
-    bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
-    bottomCreateButtonDiv.innerHTML = `
-        <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
-        <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
-    `;
-    playlistArtists.appendChild(bottomCreateButtonDiv);
-    
-    // Adicionar event listeners
-    document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-    document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
-        stopCurrentAudio();
-        playlistSection.classList.add('hidden');
-        profileSection.classList.remove('hidden');
-    });
 }
 
 // Renderizar artistas e faixas na página de playlist
@@ -592,11 +588,10 @@ function renderPlaylistDetails(artists, isPreview = false) {
         playlistArtists.appendChild(artistElement);
     });
 
-    // O botão só será adicionado após a seção de recomendações (se existir)
-    // Essa lógica é tratada após o carregamento das recomendações
+    // O botão de criar playlist já está presente no topo da seção
+    // Não precisamos adicionar botões duplicados no final
     if (!isPreview) {
-        // Adicionar botão de criar playlist no final da página
-        addBottomButtons();
+        // Para playlists já criadas, não fazer nada adicional
     }
 }
 
@@ -910,9 +905,6 @@ async function loadRecommendations(artists, limit = 10) {
         
         // Adicionar à lista de artistas
         playlistArtists.appendChild(recommendationsSection);
-        
-        // Adicionar o botão de criar playlist abaixo da seção de recomendações
-        addBottomButtons();
         
     } catch (error) {
         console.error('Erro ao carregar recomendações:', error);
@@ -1271,7 +1263,7 @@ async function previewCustomArtists(event) {
     
     // Obter número de músicas e nome da playlist
     const tracksCount = tracksPerArtist.value;
-    const customPlaylistName = playlistNameInput.value.trim() || 'Minha Playlist Personalizada';
+    let customPlaylistName = playlistNameInput.value.trim();
     
     showLoader();
     
@@ -1441,6 +1433,11 @@ async function previewCustomArtists(event) {
             }
         }
         
+        // Se não foi especificado um nome, gerar automaticamente baseado nos artistas
+        if (!customPlaylistName) {
+            customPlaylistName = generatePlaylistName(previewArtists);
+        }
+        
         // Armazenar dados para criar a playlist depois
         previewPlaylistData = {
             type: 'custom',
@@ -1468,11 +1465,21 @@ function showPlaylistPreview(title, description) {
     loginSection.classList.add('hidden');
     playlistSection.classList.remove('hidden');
     
+    // Esconder mensagem de resultado inicialmente
+    resultMessage.classList.add('hidden');
+    resultMessage.classList.remove('success', 'error');
+    
     playlistName.textContent = title;
     playlistDescription.textContent = description;
     playlistLink.textContent = "Criar Playlist";
     playlistLink.removeAttribute('href');
     playlistLink.classList.add('hidden');
+    
+    // Esconder botão de copiar link se existir
+    const copyButton = document.getElementById('copy-playlist-link');
+    if (copyButton) {
+        copyButton.remove();
+    }
     
     // Renderizar artistas e faixas em modo de prévia
     renderPlaylistDetails(previewPlaylistData.artists, true);
@@ -1626,4 +1633,37 @@ document.addEventListener('DOMContentLoaded', () => {
 // Parar áudio quando sair da página ou navegar
 window.addEventListener('beforeunload', () => {
     stopCurrentAudio();
-}); 
+});
+
+// Gerar nome automático para playlist baseado nos artistas
+function generatePlaylistName(artists) {
+    const validArtists = artists.filter(artist => !artist.notFound && !artist.error);
+    
+    if (validArtists.length === 0) {
+        return 'Minha Playlist Personalizada';
+    }
+    
+    if (validArtists.length === 1) {
+        const artist = validArtists[0];
+        if (artist.isSpecialFormat && artist.specialInfo) {
+            if (artist.specialInfo.isB2B) {
+                return `Mix B2B - ${artist.name}`;
+            } else if (artist.specialInfo.isSpecial) {
+                return `Set Especial - ${artist.name}`;
+            }
+        }
+        return `Mix ${artist.name}`;
+    }
+    
+    if (validArtists.length === 2) {
+        return `Mix ${validArtists[0].name} & ${validArtists[1].name}`;
+    }
+    
+    if (validArtists.length <= 5) {
+        const names = validArtists.map(a => a.name).join(', ');
+        return `Mix ${names}`;
+    }
+    
+    // Para muitos artistas, usar uma descrição mais genérica
+    return `Mix Personalizado (${validArtists.length} artistas)`;
+} 
