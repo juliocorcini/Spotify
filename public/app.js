@@ -234,6 +234,14 @@ async function playTrackPreview(previewUrl, trackImageContainer, trackId = null)
     // Se não há preview_url e temos trackId, tentar buscar via nossa API
     if (!finalPreviewUrl && trackId) {
         try {
+            // Adicionar indicador de loading
+            trackImageContainer.classList.add('loading-preview');
+            const playIcon = trackImageContainer.querySelector('.play-icon');
+            if (playIcon) {
+                playIcon.textContent = '⏳';
+                playIcon.title = 'Buscando preview...';
+            }
+            
             showLoader();
             const response = await fetch(`/track-preview/${trackId}`, {
                 headers: {
@@ -269,6 +277,13 @@ async function playTrackPreview(previewUrl, trackImageContainer, trackId = null)
         } catch (error) {
             console.error('Erro ao buscar preview:', error);
         } finally {
+            // Remover indicador de loading
+            trackImageContainer.classList.remove('loading-preview');
+            const playIcon = trackImageContainer.querySelector('.play-icon');
+            if (playIcon) {
+                playIcon.textContent = '▶️';
+                playIcon.title = 'Reproduzir preview';
+            }
             hideLoader();
         }
     }
@@ -600,10 +615,42 @@ function renderPlaylistDetails(artists, isPreview = false) {
         playlistArtists.appendChild(artistElement);
     });
 
-    // O botão de criar playlist já está presente no topo da seção
-    // Não precisamos adicionar botões duplicados no final
+    // Se for pré-visualização, adicionar botão flutuante no final da página também
+    if (isPreview) {
+        // Verificar se já existe para evitar duplicação
+        let existingBottomAction = document.querySelector('.bottom-create-action');
+        if (existingBottomAction) {
+            existingBottomAction.remove();
+        }
+        
+        // Criar botão flutuante no final
+        const bottomCreateActionDiv = document.createElement('div');
+        bottomCreateActionDiv.className = 'bottom-create-action';
+        bottomCreateActionDiv.innerHTML = `
+            <h4>Gostou da playlist? Crie agora!</h4>
+            <div class="create-playlist-action">
+                <button id="confirm-create-playlist-bottom" class="btn primary">Criar Playlist</button>
+                <button id="cancel-create-playlist-bottom" class="btn tertiary">Voltar</button>
+            </div>
+        `;
+        
+        // Adicionar ao final do container de detalhes da playlist
+        playlistArtists.appendChild(bottomCreateActionDiv);
+        
+        // Adicionar event listeners para os botões do final também
+        document.getElementById('confirm-create-playlist-bottom').addEventListener('click', confirmCreatePlaylist);
+        document.getElementById('cancel-create-playlist-bottom').addEventListener('click', () => {
+            playlistSection.classList.add('hidden');
+            profileSection.classList.remove('hidden');
+        });
+    }
+
+    // Para playlists já criadas, remover botões flutuantes se existirem
     if (!isPreview) {
-        // Para playlists já criadas, não fazer nada adicional
+        const existingBottomAction = document.querySelector('.bottom-create-action');
+        if (existingBottomAction) {
+            existingBottomAction.remove();
+        }
     }
 }
 
@@ -1331,13 +1378,16 @@ async function previewCustomArtists(event) {
     }
     
     // Obter número de músicas e nome da playlist
-    let tracksCount = tracksPerArtist.value;
+    let tracksCount = parseInt(tracksPerArtist.value);
     
-    // Se há B2B na lista, usar um número maior por padrão
+    // Se há B2B na lista, multiplicar pelo número de artistas
     const hasB2B = artistsList.some(name => isSpecialArtistFormat(name) && name.toUpperCase().includes('B2B'));
-    if (hasB2B && tracksCount == 5) { // Se está no valor padrão
-        tracksCount = 10; // Dobrar para B2B
-        console.log('🎧 B2B detectado, aumentando número de faixas para:', tracksCount);
+    if (hasB2B) {
+        // Para B2B: se usuário escolheu 5 faixas por artista, e há 2 artistas, então são 5×2=10 total
+        // Se usuário escolheu 10 faixas por artista, e há 2 artistas, então são 10×2=20 total
+        const estimatedArtistsInB2B = 2; // Assumir 2 artistas por B2B
+        tracksCount = tracksCount * estimatedArtistsInB2B;
+        console.log(`🎧 B2B detectado, ajustando número de faixas de ${tracksPerArtist.value} para ${tracksCount} (${tracksPerArtist.value} por artista × ${estimatedArtistsInB2B} artistas)`);
     }
     
     let customPlaylistName = playlistNameInput.value.trim();

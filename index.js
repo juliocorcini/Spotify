@@ -183,8 +183,12 @@ app.get('/personalized-artist-tracks/:artistId', requireSpotifyAuth, async (req,
       }
     }
     
+    // Remover duplicatas similares (mesmo nome, versões diferentes)
+    const finalUniqueTracksFiltered = removeSimilarDuplicates(uniqueTracks);
+    console.log(`🎵 Final unique tracks after similar duplicates removal: ${finalUniqueTracksFiltered.length}`);
+    
     // Aplicar offset e limit
-    const paginatedTracks = uniqueTracks.slice(
+    const paginatedTracks = finalUniqueTracksFiltered.slice(
       parseInt(offset, 10),
       parseInt(offset, 10) + parseInt(limit, 10)
     );
@@ -232,15 +236,15 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       terms = processedArtist.searchTerms;
     }
     
-    // Para B2B, dobrar o limite de faixas já que são 2 artistas + garantir mínimo de 10
-    let actualLimit;
+    // Para artistas especiais, calcular um limite maior para garantir variedade
+    let actualLimit = parseInt(limit, 10) || 10;
+    
+    // Para B2B, o limite já vem multiplicado pelo frontend (ex: 5 por artista × 2 artistas = 10 total)
+    // Não multiplicar novamente aqui, apenas garantir que temos faixas suficientes para buscar
     if (processedArtist.isB2B) {
-      const requestedLimit = parseInt(limit, 10);
-      // Para B2B, usar pelo menos 10 músicas, ou dobrar o que foi solicitado se for maior que 5
-      actualLimit = Math.max(10, requestedLimit * 2);
-      console.log(`🎧 B2B detected - Original limit: ${requestedLimit}, Adjusted limit: ${actualLimit}`);
-    } else {
-      actualLimit = parseInt(limit, 10);
+      // Aumentar o limite de busca interna para ter mais opções antes da filtragem
+      const searchLimit = Math.max(actualLimit * 3, 50); // Buscar mais para ter variedade
+      console.log(`🎧 B2B detected: user wants ${actualLimit} total tracks, searching ${searchLimit} tracks for variety`);
     }
     
     // Array para armazenar todas as faixas
@@ -319,6 +323,10 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
         }
         
         console.log(`✅ Found ${allTracks.length} collaboration tracks`);
+        
+        // Remover duplicatas similares das colaborações antes de continuar
+        allTracks = removeSimilarDuplicates(allTracks);
+        console.log(`🧹 After removing similar duplicates: ${allTracks.length} collaboration tracks`);
         
         // Buscar faixas individuais de cada artista para complementar
         const remainingLimit = Math.max(0, actualLimit - allTracks.length);
@@ -529,11 +537,15 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       }
     }
     
+    // Remover duplicatas similares (mesmo nome, versões diferentes)
+    const finalUniqueTracksFiltered = removeSimilarDuplicates(uniqueTracks);
+    console.log(`🎵 Final unique tracks after similar duplicates removal: ${finalUniqueTracksFiltered.length}`);
+    
     // Para B2B, embaralhar as faixas para misturar os artistas
     if (processedArtist.isB2B) {
       // Separar colaborações das faixas individuais
-      const collaborations = uniqueTracks.filter(track => track.isCollaboration);
-      const individualTracks = uniqueTracks.filter(track => !track.isCollaboration);
+      const collaborations = finalUniqueTracksFiltered.filter(track => track.isCollaboration);
+      const individualTracks = finalUniqueTracksFiltered.filter(track => !track.isCollaboration);
       
       // Separar faixas individuais por artista
       const artistBuckets = new Map();
@@ -581,7 +593,7 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       });
     } else {
       // Limitar ao número solicitado para não-B2B
-      const limitedTracks = uniqueTracks.slice(0, actualLimit);
+      const limitedTracks = finalUniqueTracksFiltered.slice(0, actualLimit);
       
       // Retornar as faixas encontradas
       res.status(200).json({
@@ -598,6 +610,83 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
     res.status(400).json({ error: 'Error getting tracks for special artist format' });
   }
 });
+
+// Função para remover duplicatas similares
+function removeSimilarDuplicates(tracks) {
+    const seen = new Map(); // Map de nome normalizado -> melhor track
+    const result = [];
+    
+    // Função para normalizar nome da música (remover feat., VIP, remix, etc. para comparação)
+    function normalizeTrackName(name) {
+        return name
+            .toLowerCase()
+            .replace(/\s*\(.*?\)\s*/g, '') // Remove tudo entre parênteses
+            .replace(/\s*\[.*?\]\s*/g, '') // Remove tudo entre colchetes
+            .replace(/\s*feat\.?\s*.*/i, '') // Remove feat. e tudo depois
+            .replace(/\s*ft\.?\s*.*/i, '') // Remove ft. e tudo depois
+            .replace(/\s*-\s*vip\s*mix.*/i, '') // Remove VIP mix
+            .replace(/\s*-\s*remix.*/i, '') // Remove remix
+            .replace(/\s+/g, ' ') // Normaliza espaços
+            .trim();
+    }
+    
+    // Função para determinar qual track é melhor (prioridade: original > VIP > remix > extended)
+    function getTrackPriority(track) {
+        const name = track.name.toLowerCase();
+        const albumName = track.album?.name?.toLowerCase() || '';
+        
+        // Prioridade mais alta para originais
+        if (!name.includes('(') && !name.includes('[')) {
+            return 100;
+        }
+        
+        // Penalizar VIP mixes
+        if (name.includes('vip')) {
+            return 30;
+        }
+        
+        // Penalizar remixes
+        if (name.includes('remix')) {
+            return 20;
+        }
+        
+        // Penalizar extended versions
+        if (name.includes('extended')) {
+            return 15;
+        }
+        
+        // Preferir álbuns principais vs compilações
+        if (albumName.includes('annual') || albumName.includes('compilation') || albumName.includes('best of')) {
+            return 10;
+        }
+        
+        // Default
+        return 50;
+    }
+    
+    tracks.forEach(track => {
+        const normalizedName = normalizeTrackName(track.name);
+        const priority = getTrackPriority(track);
+        
+        if (seen.has(normalizedName)) {
+            const existingTrack = seen.get(normalizedName);
+            const existingPriority = getTrackPriority(existingTrack);
+            
+            // Se o novo track tem prioridade maior, substitui
+            if (priority > existingPriority) {
+                console.log(`🔄 Replacing "${existingTrack.name}" with "${track.name}" (priority ${priority} > ${existingPriority})`);
+                seen.set(normalizedName, track);
+            } else {
+                console.log(`⏭️ Skipping "${track.name}" - keeping "${existingTrack.name}" (priority ${existingPriority} >= ${priority})`);
+            }
+        } else {
+            seen.set(normalizedName, track);
+        }
+    });
+    
+    // Converter Map de volta para array
+    return Array.from(seen.values());
+}
 
 // Start the server
 async function startServer() {
