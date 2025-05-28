@@ -58,17 +58,39 @@ router.get('/artist-tracks/:artistId', requireSpotifyAuth, async (req, res) => {
           track.artists.some(artist => artist.id === artistId)
         );
         
-        // Adicionar detalhes do álbum para cada faixa
-        const tracksWithAlbum = filteredTracks.map(track => ({
-          ...track,
-          album: {
-            id: album.id,
-            name: album.name,
-            images: album.images
+        // Para cada track filtrada, obter dados completos incluindo preview_url
+        for (const track of filteredTracks) {
+          try {
+            const fullTrackResult = await withRetry(() => spotifyApi.getTrack(track.id));
+            const fullTrack = fullTrackResult.body;
+            
+            // Adicionar detalhes do álbum para cada faixa
+            const trackWithAlbum = {
+              ...fullTrack,
+              album: {
+                ...fullTrack.album,
+                id: album.id,
+                name: album.name,
+                images: album.images
+              }
+            };
+            
+            allTracks.push(trackWithAlbum);
+          } catch (error) {
+            console.error(`Error getting full track data for ${track.id}:`, error);
+            // Se falhar ao obter dados completos, usar dados básicos sem preview_url
+            const trackWithAlbum = {
+              ...track,
+              preview_url: null, // Marcar como não disponível
+              album: {
+                id: album.id,
+                name: album.name,
+                images: album.images
+              }
+            };
+            allTracks.push(trackWithAlbum);
           }
-        }));
-        
-        allTracks = [...allTracks, ...tracksWithAlbum];
+        }
       } catch (error) {
         console.error(`Error getting tracks for album ${album.id}:`, error);
       }

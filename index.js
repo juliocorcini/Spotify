@@ -72,17 +72,39 @@ app.get('/personalized-artist-tracks/:artistId', requireSpotifyAuth, async (req,
           track.artists.some(artist => artist.id === artistId)
         );
         
-        // Adicionar detalhes do álbum para cada faixa
-        const tracksWithAlbum = filteredTracks.map(track => ({
-          ...track,
-          album: {
-            id: album.id,
-            name: album.name,
-            images: album.images
+        // Para cada track filtrada, obter dados completos incluindo preview_url
+        for (const track of filteredTracks) {
+          try {
+            const fullTrackResult = await withRetry(() => spotifyApi.getTrack(track.id));
+            const fullTrack = fullTrackResult.body;
+            
+            // Adicionar detalhes do álbum para cada faixa
+            const trackWithAlbum = {
+              ...fullTrack,
+              album: {
+                ...fullTrack.album,
+                id: album.id,
+                name: album.name,
+                images: album.images
+              }
+            };
+            
+            allTracks.push(trackWithAlbum);
+          } catch (error) {
+            console.error(`Error getting full track data for ${track.id}:`, error);
+            // Se falhar ao obter dados completos, usar dados básicos sem preview_url
+            const trackWithAlbum = {
+              ...track,
+              preview_url: null, // Marcar como não disponível
+              album: {
+                id: album.id,
+                name: album.name,
+                images: album.images
+              }
+            };
+            allTracks.push(trackWithAlbum);
           }
-        }));
-        
-        allTracks = [...allTracks, ...tracksWithAlbum];
+        }
       } catch (error) {
         console.error(`Error getting tracks for album ${album.id}:`, error);
       }
@@ -307,26 +329,58 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
                             try {
                                 const albumTracksResult = await withRetry(() => spotifyApi.getAlbumTracks(album.id, { limit: 3 }));
                                 
-                                const albumTracks = albumTracksResult.body.items
+                                // Filtrar faixas e obter dados completos incluindo preview_url
+                                const filteredTracks = albumTracksResult.body.items
                                     .filter(track => track.artists.some(trackArtist => trackArtist.id === artist.id))
-                                    .slice(0, 2) // Máximo 2 faixas por álbum
-                                    .map(track => ({
-                                        ...track,
-                                        album: {
-                                            id: album.id,
-                                            name: album.name,
-                                            images: album.images
-                                        },
-                                        fromArtist: {
-                                            id: artist.id,
-                                            name: artist.name,
-                                            searchTerm: artist.searchTerm
-                                        },
-                                        isFromB2B: true,
-                                        isCollaboration: false
-                                    }));
+                                    .slice(0, 2); // Máximo 2 faixas por álbum
                                 
-                                allTracks = [...allTracks, ...albumTracks];
+                                // Para cada track filtrada, obter dados completos incluindo preview_url
+                                for (const track of filteredTracks) {
+                                    try {
+                                        const fullTrackResult = await withRetry(() => spotifyApi.getTrack(track.id));
+                                        const fullTrack = fullTrackResult.body;
+                                        
+                                        const albumTrackWithFullData = {
+                                            ...fullTrack,
+                                            album: {
+                                                ...fullTrack.album,
+                                                id: album.id,
+                                                name: album.name,
+                                                images: album.images
+                                            },
+                                            fromArtist: {
+                                                id: artist.id,
+                                                name: artist.name,
+                                                searchTerm: artist.searchTerm
+                                            },
+                                            isFromB2B: true,
+                                            isCollaboration: false
+                                        };
+                                        
+                                        allTracks.push(albumTrackWithFullData);
+                                    } catch (error) {
+                                        console.error(`Error getting full track data for ${track.id}:`, error);
+                                        // Se falhar ao obter dados completos, usar dados básicos sem preview_url
+                                        const albumTrackBasic = {
+                                            ...track,
+                                            preview_url: null, // Marcar como não disponível
+                                            album: {
+                                                id: album.id,
+                                                name: album.name,
+                                                images: album.images
+                                            },
+                                            fromArtist: {
+                                                id: artist.id,
+                                                name: artist.name,
+                                                searchTerm: artist.searchTerm
+                                            },
+                                            isFromB2B: true,
+                                            isCollaboration: false
+                                        };
+                                        
+                                        allTracks.push(albumTrackBasic);
+                                    }
+                                }
                             } catch (error) {
                                 console.error(`Error getting album tracks for ${album.id}:`, error);
                             }
