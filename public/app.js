@@ -282,6 +282,30 @@ function isSpecialArtistFormat(artistName) {
     return artistName.includes('B2B') || (artistName.includes('(') && artistName.includes(')'));
 }
 
+// Função para adicionar botões flutuantes no final
+function addBottomButtons() {
+    // Verificar se já existem os botões para evitar duplicação
+    if (document.getElementById('bottom-confirm-create-playlist')) {
+        return; // Botões já existem
+    }
+    
+    const bottomCreateButtonDiv = document.createElement('div');
+    bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
+    bottomCreateButtonDiv.innerHTML = `
+        <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
+        <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
+    `;
+    playlistArtists.appendChild(bottomCreateButtonDiv);
+    
+    // Adicionar event listeners
+    document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
+    document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
+        stopCurrentAudio();
+        playlistSection.classList.add('hidden');
+        profileSection.classList.remove('hidden');
+    });
+}
+
 // Renderizar artistas e faixas na página de playlist
 function renderPlaylistDetails(artists, isPreview = false) {
     playlistArtists.innerHTML = '';
@@ -388,7 +412,15 @@ function renderPlaylistDetails(artists, isPreview = false) {
         let specialFormatHtml = '';
         if (artist.isSpecialFormat) {
             if (artist.specialInfo && artist.specialInfo.isB2B) {
-                specialFormatHtml = `<div class="artist-special-format">🎧 B2B Set (Conjunto de artistas) - ${artist.tracks ? artist.tracks.length : 0} músicas</div>`;
+                const totalTracks = artist.tracks ? artist.tracks.length : 0;
+                const collaborations = artist.tracks ? artist.tracks.filter(t => t.isCollaboration).length : 0;
+                
+                let collabInfo = '';
+                if (collaborations > 0) {
+                    collabInfo = ` (${collaborations} colaboração${collaborations > 1 ? 'ões' : ''})`;
+                }
+                
+                specialFormatHtml = `<div class="artist-special-format">🎧 B2B Set (Conjunto de artistas) - ${totalTracks} músicas${collabInfo}</div>`;
             } else if (artist.specialInfo && artist.specialInfo.isSpecial) {
                 specialFormatHtml = `<div class="artist-special-format">✨ Set Especial</div>`;
             }
@@ -442,7 +474,16 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 // Para B2B, mostrar de qual artista a música vem
                 let artistSourceHtml = '';
                 if (track.fromArtist && track.isFromB2B) {
-                    artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+                    if (track.isCollaboration) {
+                        // Colaboração entre os artistas B2B
+                        const collabArtists = track.collaboratingArtists ? 
+                            track.collaboratingArtists.map(a => a.name).join(' & ') : 
+                            track.fromArtist.name;
+                        artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração: ${collabArtists}</div>`;
+                    } else {
+                        // Música individual de um dos artistas
+                        artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+                    }
                 } else if (track.fromArtist) {
                     artistSourceHtml = `<div class="track-artist-source">🎵 Artista: ${track.fromArtist.name}</div>`;
                 } else if (track.isSpecialSet) {
@@ -547,22 +588,9 @@ function renderPlaylistDetails(artists, isPreview = false) {
 
     // O botão só será adicionado após a seção de recomendações (se existir)
     // Essa lógica é tratada após o carregamento das recomendações
-    if (!isPreview || document.querySelector('.recommendations-section') === null) {
+    if (!isPreview) {
         // Adicionar botão de criar playlist no final da página
-        const bottomCreateButtonDiv = document.createElement('div');
-        bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
-        bottomCreateButtonDiv.innerHTML = `
-            <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
-            <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
-        `;
-        playlistArtists.appendChild(bottomCreateButtonDiv);
-        
-        // Adicionar event listeners
-        document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-        document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
-            playlistSection.classList.add('hidden');
-            profileSection.classList.remove('hidden');
-        });
+        addBottomButtons();
     }
 }
 
@@ -925,20 +953,7 @@ async function loadRecommendations(artists, limit = 10) {
         playlistArtists.appendChild(recommendationsSection);
         
         // Adicionar o botão de criar playlist abaixo da seção de recomendações
-        const bottomCreateButtonDiv = document.createElement('div');
-        bottomCreateButtonDiv.className = 'create-playlist-action bottom-create-action';
-        bottomCreateButtonDiv.innerHTML = `
-            <button id="bottom-confirm-create-playlist" class="btn primary">Criar Playlist</button>
-            <button id="bottom-cancel-create-playlist" class="btn tertiary">Voltar</button>
-        `;
-        playlistArtists.appendChild(bottomCreateButtonDiv);
-        
-        // Adicionar event listeners
-        document.getElementById('bottom-confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-        document.getElementById('bottom-cancel-create-playlist').addEventListener('click', () => {
-            playlistSection.classList.add('hidden');
-            profileSection.classList.remove('hidden');
-        });
+        addBottomButtons();
         
     } catch (error) {
         console.error('Erro ao carregar recomendações:', error);
@@ -1016,7 +1031,16 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             // Para B2B, mostrar de qual artista a música vem
             let artistSourceHtml = '';
             if (track.fromArtist && track.isFromB2B) {
-                artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+                if (track.isCollaboration) {
+                    // Colaboração entre os artistas B2B
+                    const collabArtists = track.collaboratingArtists ? 
+                        track.collaboratingArtists.map(a => a.name).join(' & ') : 
+                        track.fromArtist.name;
+                    artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração: ${collabArtists}</div>`;
+                } else {
+                    // Música individual de um dos artistas
+                    artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+                }
             } else if (track.fromArtist) {
                 artistSourceHtml = `<div class="track-artist-source">🎵 Artista: ${track.fromArtist.name}</div>`;
             } else if (track.isSpecialSet) {
