@@ -67,12 +67,34 @@ npm run dev
 
 1. Faça push do código para um repositório Git (GitHub, GitLab, etc.)
 2. Cadastre-se no [Render](https://render.com)
-3. Crie um novo Web Service e conecte seu repositório
-4. Configure o serviço:
+3. **Configure o PostgreSQL (Recomendado para Produção):**
+   - Crie um **PostgreSQL Database** (Starter/Free)
+   - Copie a **Internal Database URL**
+4. Crie um novo Web Service e conecte seu repositório
+5. Configure o serviço:
    - Build Command: `npm install`
    - Start Command: `npm start`
    - Adicione todas as variáveis de ambiente do arquivo `.env`
-5. Faça o deploy do serviço
+   - **Adicione:** `DATABASE_URL=postgresql://...` (URL do PostgreSQL)
+6. Faça o deploy do serviço
+
+> 📋 **Ver instruções detalhadas em [`SETUP_DATABASE.md`](./SETUP_DATABASE.md)**
+
+## 🗄️ Persistência de Dados
+
+### 🔄 **Sistema Híbrido Implementado**
+
+O sistema suporta **duas formas de armazenamento**:
+
+- **🗄️ PostgreSQL** (Produção): Dados persistem entre deploys
+- **📁 Arquivos JSON** (Desenvolvimento): Fallback automático local
+
+### ✅ **Configuração Automática**
+
+- **Com `DATABASE_URL`**: Usa PostgreSQL automaticamente
+- **Sem `DATABASE_URL`**: Usa arquivos locais (desenvolvimento)
+- **Migração**: Zero configuração manual de tabelas
+- **Fallback**: Sistema robusto com recuperação automática
 
 ## 📚 API Endpoints
 

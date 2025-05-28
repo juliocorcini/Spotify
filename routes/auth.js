@@ -36,7 +36,7 @@ router.get('/callback', async (req, res) => {
       const userResult = await spotifyApi.getMe();
       const userData = userResult.body;
       
-      registerUser({
+      await registerUser({
         id: userData.id,
         displayName: userData.display_name,
         email: userData.email,

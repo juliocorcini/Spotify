@@ -42,14 +42,15 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
     const addedTracksResponse = await withRetry(() => spotifyApi.getPlaylistTracks(playlistId));
     
     // Registrar a playlist criada
-    registerPlaylist({
+    const playlistDetails = {
       id: playlist.body.id,
       name: playlist.body.name,
       description: playlist.body.description,
-      trackCount: trackUris.length,
-      url: playlist.body.external_urls.spotify,
-      type: 'custom_tracks'
-    }, userId);
+      external_urls: playlist.body.external_urls,
+      tracks: { total: trackUris.length }
+    };
+    
+    await registerPlaylist(playlistDetails, userId);
     
     res.status(200).json({
       success: true,
@@ -194,18 +195,16 @@ router.post('/create-custom-playlist', requireSpotifyAuth, async (req, res) => {
     }
     
     // Registrar a playlist criada
-    registerPlaylist({
+    const playlistDetails = {
       id: playlist.body.id,
       name: playlist.body.name,
       description: playlist.body.description,
-      trackCount: allTracks.length,
-      url: playlist.body.external_urls.spotify,
-      type: 'custom',
+      external_urls: playlist.body.external_urls,
+      tracks: { total: allTracks.length },
       artistsCount: artists.length
-    }, userId, {
-      requestedArtists: artists,
-      foundArtists: foundArtists
-    });
+    };
+    
+    await registerPlaylist(playlistDetails, userId, { requestedArtists: artists, foundArtists: foundArtists });
     
     res.status(200).json({
       success: true,
@@ -310,18 +309,16 @@ router.post('/create-artist-playlist', requireSpotifyAuth, async (req, res) => {
     }
     
     // Registrar a playlist criada
-    registerPlaylist({
+    const playlistDetails = {
       id: playlist.body.id,
       name: playlist.body.name,
       description: playlist.body.description,
-      trackCount: tracks.length,
-      url: playlist.body.external_urls.spotify,
-      type: 'top_artists',
+      external_urls: playlist.body.external_urls,
+      tracks: { total: tracks.length },
       artistsCount: allArtistsData.length
-    }, userId, {
-      requestedArtists: topArtistNames,
-      foundArtists: foundArtists
-    });
+    };
+    
+    await registerPlaylist(playlistDetails, userId, { requestedArtists: topArtistNames, foundArtists: foundArtists });
     
     res.status(200).json({
       success: true,

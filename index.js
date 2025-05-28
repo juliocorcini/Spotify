@@ -3,6 +3,16 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
+// Inicializar banco de dados se disponível
+async function initializeApp() {
+  try {
+    const { initializeDatabase } = require('./config/database');
+    await initializeDatabase();
+  } catch (error) {
+    console.log('📁 Continuando sem banco de dados (desenvolvimento)');
+  }
+}
+
 // Import routes
 const authRoutes = require('./routes/auth');
 const spotifyRoutes = require('./routes/spotify');
@@ -528,6 +538,13 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
 });
 
 // Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-}); 
+async function startServer() {
+  await initializeApp();
+  
+  app.listen(PORT, () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`🌐 Access: http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch(console.error); 

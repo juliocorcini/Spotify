@@ -77,4 +77,45 @@
 1. Crie uma prévia de playlist
 2. Role até o final da página
 3. Use os botões "Criar Playlist" e "Voltar" no final
-4. Verifique que funcionam corretamente 
+4. Verifique que funcionam corretamente
+
+## [3.0.0] - 2024-01-XX - 🗄️ **PERSISTÊNCIA DE DADOS POSTGRESQL**
+
+### 🚀 **NOVA FUNCIONALIDADE PRINCIPAL**
+- **PostgreSQL Suporte Completo**: Sistema híbrido com PostgreSQL para produção e arquivos JSON para desenvolvimento
+- **Fallback Automático**: Detecção automática do ambiente e fallback seguro
+- **Zero Configuração**: Criação automática de tabelas e índices
+- **Migração Transparente**: Transição suave entre sistemas de armazenamento
+
+### 🗄️ **Persistência de Dados**
+- **Banco PostgreSQL**: Suporte completo ao PostgreSQL gratuito do Render
+- **Sistema Híbrido**: Arquivos JSON (dev) + PostgreSQL (prod)
+- **Tabelas Automatizadas**: Criação automática de `users` e `playlists`
+- **Índices Otimizados**: Performance melhorada com índices estratégicos
+- **Robustez**: Sistema de retry e fallback para máxima confiabilidade
+
+### 🔧 **Melhorias Técnicas**
+- **Async/Await**: Atualização completa para operações assíncronas
+- **Conexão Segura**: SSL automático em produção
+- **Logs Melhorados**: Sistema de logging mais informativo
+- **Error Handling**: Tratamento robusto de erros do banco de dados
+
+### 📦 **Dependências**
+- **Adicionado**: `pg@8.11.3` para PostgreSQL
+- **Compatibilidade**: Mantida compatibilidade com sistema anterior
+
+### 🛠️ **Configuração**
+- **Variável ENV**: `DATABASE_URL` para configuração automática
+- **Documentação**: `SETUP_DATABASE.md` com instruções detalhadas
+- **README**: Seção atualizada com instruções de deploy
+
+### 🎯 **Benefícios**
+- ✅ **Dados Persistem**: Não são mais perdidos em deploys
+- ✅ **Gratuito**: PostgreSQL Starter do Render é gratuito
+- ✅ **Escalável**: Fácil upgrade para planos maiores
+- ✅ **Desenvolvimento**: Funciona local sem configuração
+- ✅ **Produção**: Robusto e confiável em produção
+
+---
+
+## [2.5.0] - 2024-01-XX - 🎵 **PREVIEW DE ÁUDIO + B2B MELHORADO** 
