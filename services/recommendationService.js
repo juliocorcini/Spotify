@@ -48,7 +48,35 @@ async function getSearchBasedRecommendations(seedTracks, seedArtists, limit = 20
                 artistId: artistId,
                 weight: 1.2
               });
+              
+              // Adicionar consulta específica só do gênero para encontrar artistas similares
+              searchQueries.push({
+                query: `genre:"${genre}"`,
+                artistId: artistId,
+                weight: 1.0
+              });
             });
+            
+            // Se é um gênero eletrônico, ser mais específico
+            const electronicGenres = ['house', 'techno', 'progressive house', 'deep house', 'tech house', 'minimal techno', 'electronic', 'edm', 'dance', 'bass house', 'future house'];
+            const hasElectronicGenre = artist.genres.some(genre => 
+              electronicGenres.some(eg => genre.toLowerCase().includes(eg))
+            );
+            
+            if (hasElectronicGenre) {
+              // Para gêneros eletrônicos, adicionar consultas mais específicas
+              searchQueries.push({
+                query: `${artist.name} electronic dance music`,
+                artistId: artistId,
+                weight: 1.4
+              });
+              
+              searchQueries.push({
+                query: `${artist.name} dj set`,
+                artistId: artistId,
+                weight: 1.3
+              });
+            }
           }
         }
       } catch (error) {
@@ -251,6 +279,47 @@ async function getSearchBasedRecommendations(seedTracks, seedArtists, limit = 20
   const seedTrackIds = seedTracks ? new Set(seedTracks) : new Set();
   const filteredTracks = uniqueTracks.filter(track => !seedTrackIds.has(track.id));
   
+  // Aplicar filtro de gênero se temos gêneros de referência
+  let genreFilteredTracks = filteredTracks;
+  if (trackGenres.size > 0) {
+    const referenceGenres = Array.from(trackGenres);
+    console.log(`🎭 Reference genres for filtering:`, referenceGenres);
+    
+    // Determinar se é música eletrônica
+    const electronicGenres = ['house', 'techno', 'progressive house', 'deep house', 'tech house', 'minimal techno', 'electronic', 'edm', 'dance', 'bass house', 'future house', 'trance', 'dubstep', 'drum and bass'];
+    const isElectronic = referenceGenres.some(genre => 
+      electronicGenres.some(eg => genre.toLowerCase().includes(eg))
+    );
+    
+    // Determinar se é pop/mainstream
+    const popGenres = ['pop', 'mainstream', 'indie pop', 'electropop', 'dance pop'];
+    const isPop = referenceGenres.some(genre => 
+      popGenres.some(pg => genre.toLowerCase().includes(pg))
+    );
+    
+    if (isElectronic) {
+      console.log(`🎵 Filtering for electronic music compatibility`);
+      // Para música eletrônica, remover artistas claramente pop/mainstream que não fazem eletrônica
+      genreFilteredTracks = filteredTracks.filter(track => {
+        const trackArtist = track.artists[0].name.toLowerCase();
+        // Lista de artistas pop que devem ser excluídos de recomendações eletrônicas
+        const popArtistsToExclude = ['charli xcx', 'taylor swift', 'billie eilish', 'ariana grande', 'dua lipa', 'olivia rodrigo', 'beyonce'];
+        return !popArtistsToExclude.some(popArtist => trackArtist.includes(popArtist));
+      });
+    } else if (isPop) {
+      console.log(`🎤 Filtering for pop music compatibility`);
+      // Para música pop, remover artistas claramente eletrônicos/techno
+      genreFilteredTracks = filteredTracks.filter(track => {
+        const trackArtist = track.artists[0].name.toLowerCase();
+        // Lista de artistas eletrônicos que devem ser excluídos de recomendações pop
+        const electronicArtistsToExclude = ['carl cox', 'richie hawtin', 'adam beyer', 'charlotte de witte', 'amelie lens'];
+        return !electronicArtistsToExclude.some(electronicArtist => trackArtist.includes(electronicArtist));
+      });
+    }
+    
+    console.log(`🎯 Tracks after genre filtering: ${genreFilteredTracks.length} (was ${filteredTracks.length})`);
+  }
+  
   // Balancear resultados finais entre os artistas
   let balancedTracks = [];
   const artistBuckets = new Map();
@@ -264,7 +333,7 @@ async function getSearchBasedRecommendations(seedTracks, seedArtists, limit = 20
   artistBuckets.set('other', []);
   
   // Distribuir faixas nos buckets apropriados
-  filteredTracks.forEach(track => {
+  genreFilteredTracks.forEach(track => {
     let assigned = false;
     
     // Verificar se a faixa pertence a algum dos artistas sementes

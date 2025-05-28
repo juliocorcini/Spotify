@@ -331,7 +331,7 @@ function toggleTrackPreview(previewUrl, trackImageContainer, trackId = null) {
         stopCurrentAudio();
     } else {
         // Caso contrário, reproduzir
-        playTrackPreview(previewUrl, trackImageContainer);
+        playTrackPreview(previewUrl, trackImageContainer, trackId);
     }
 }
 
@@ -344,40 +344,6 @@ function isSpecialArtistFormat(artistName) {
 // Renderizar artistas e faixas na página de playlist
 function renderPlaylistDetails(artists, isPreview = false) {
     playlistArtists.innerHTML = '';
-    
-    // Se for pré-visualização, adicionar botão para criar playlist
-    if (isPreview) {
-        const createButtonDiv = document.createElement('div');
-        createButtonDiv.className = 'create-playlist-action';
-        createButtonDiv.innerHTML = `
-            <button id="confirm-create-playlist" class="btn primary">Criar Playlist</button>
-            <button id="cancel-create-playlist" class="btn tertiary">Voltar</button>
-        `;
-        playlistArtists.appendChild(createButtonDiv);
-        
-        // Adicionar event listeners
-        document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
-        document.getElementById('cancel-create-playlist').addEventListener('click', () => {
-            playlistSection.classList.add('hidden');
-            profileSection.classList.remove('hidden');
-        });
-
-        // Criar seção de recomendações
-        const recommendationsCount = artists.reduce((count, artist) => {
-            if (artist.tracks && !artist.notFound && !artist.error) {
-                return count + (parseInt(tracksPerArtist.value) * 2 || 10);
-            }
-            return count;
-        }, 0);
-
-        if (recommendationsCount > 0) {
-            try {
-                loadRecommendations(artists, recommendationsCount);
-            } catch (error) {
-                console.error('Erro ao carregar recomendações:', error);
-            }
-        }
-    }
     
     artists.forEach(artist => {
         if (artist.notFound) {
@@ -615,6 +581,25 @@ function renderPlaylistDetails(artists, isPreview = false) {
         playlistArtists.appendChild(artistElement);
     });
 
+    // Se for pré-visualização, carregar recomendações após processar todos os artistas
+    if (isPreview) {
+        // Criar seção de recomendações
+        const recommendationsCount = artists.reduce((count, artist) => {
+            if (artist.tracks && !artist.notFound && !artist.error) {
+                return count + Math.min(10, Math.max(5, parseInt(tracksPerArtist.value) || 5));
+            }
+            return count;
+        }, 0);
+
+        if (recommendationsCount > 0) {
+            try {
+                loadRecommendations(artists, recommendationsCount);
+            } catch (error) {
+                console.error('Erro ao carregar recomendações:', error);
+            }
+        }
+    }
+
     // Se for pré-visualização, adicionar botão flutuante no final da página também
     if (isPreview) {
         // Verificar se já existe para evitar duplicação
@@ -669,47 +654,20 @@ function addPreviewEventListeners(trackItem) {
         console.log(`🔍 TrackItem dataset:`, trackItem.dataset);
         console.log(`🔍 TrackImage dataset:`, trackImage.dataset);
         
-        // Se não há preview URL, usar o serviço de preview
+        // Mostrar loading indicator imediatamente, independente de ter preview URL
         if (!previewUrl || previewUrl === '') {
             console.log(`🔄 No preview URL available, using preview service for trackId: ${trackId}`);
             if (trackId && trackId !== 'null' && trackId !== '') {
-                // Obter nome da música e artista para buscar preview
-                const trackName = trackItem.querySelector('.track-name')?.textContent || '';
-                const trackAlbum = trackItem.querySelector('.track-album')?.textContent || '';
-                
-                console.log(`🎵 Using preview service for: ${trackName} - Album: ${trackAlbum}`);
-                
-                // Usar o serviço de preview
-                fetch(`/track-preview/${trackId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.preview_url) {
-                        console.log(`✅ Preview encontrado pelo serviço: ${data.preview_url}`);
-                        // Atualizar o dataset e tocar
-                        trackImage.dataset.previewUrl = data.preview_url;
-                        toggleTrackPreview(data.preview_url, trackImage.parentElement, trackId);
-                    } else {
-                        console.log(`❌ Nenhum preview encontrado pelo serviço`);
-                        alert('Preview não disponível para esta música.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Erro ao buscar preview:', error);
-                    alert('Erro ao buscar preview da música.');
-                });
-                return;
+                toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
             } else {
                 console.error(`❌ TrackId inválido: ${trackId}`);
                 alert('Erro: ID da música não disponível.');
                 return;
             }
+        } else {
+            // Mesmo com preview URL, pode precisar buscar se não funcionar
+            toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
         }
-        
-        toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
     };
     
     trackImage.addEventListener('click', handlePreviewClick);
@@ -908,7 +866,7 @@ async function loadRecommendations(artists, limit = 10) {
         
         showLoader();
         
-        // Buscar recomendações
+        // Buscar recomendações usando sistema inteligente baseado em busca
         let query = '';
         if (finalSeedTracks.length > 0) {
             query += `seed_tracks=${finalSeedTracks.join(',')}`;
@@ -919,10 +877,19 @@ async function loadRecommendations(artists, limit = 10) {
             query += `seed_artists=${finalSeedArtists.join(',')}`;
         }
         
+        // Adicionar parâmetros de gênero para melhorar precisão
+        const artistNames = artists
+            .filter(a => !a.notFound && !a.error)
+            .map(a => a.name)
+            .join(' ');
+        
+        if (query) query += '&';
+        query += `target_artists=${encodeURIComponent(artistNames)}`;
+        
         // Adicionar parâmetros extras para melhorar recomendações
         query += `&limit=${limit}`;
         
-        const response = await fetch(`/recommendations?${query}`, {
+        const response = await fetch(`/search-recommendations?${query}`, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`
             }
