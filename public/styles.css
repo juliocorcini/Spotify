@@ -281,6 +281,96 @@ h3 {
     border-radius: 4px;
 }
 
+/* Container para imagem da track com preview */
+.track-image-container {
+    position: relative;
+    width: 50px;
+    height: 50px;
+    margin-right: 15px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.track-image-container:hover {
+    transform: scale(1.05);
+}
+
+.track-image-container .track-image {
+    width: 100%;
+    height: 100%;
+    border-radius: 4px;
+    margin: 0;
+    display: block;
+}
+
+/* Ícone de play sobreposto */
+.track-image-container .play-icon {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.track-image-container:hover .play-icon {
+    opacity: 1;
+}
+
+/* Estilo quando a música está tocando */
+.track-image-container.playing {
+    animation: pulse 1.5s infinite;
+    border: 2px solid #1DB954;
+    border-radius: 6px;
+}
+
+.track-image-container.playing .play-icon {
+    opacity: 1;
+    background-color: #1DB954;
+    animation: none;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(29, 185, 84, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(29, 185, 84, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(29, 185, 84, 0);
+    }
+}
+
+/* Indicador visual para tracks com preview disponível */
+.track-image-container[data-preview-url]:not([data-preview-url=""]):hover::before {
+    content: "🎵";
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background-color: #1DB954;
+    color: white;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    z-index: 3;
+}
+
 .track-details {
     flex: 1;
 }

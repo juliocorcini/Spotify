@@ -31,6 +31,10 @@ let expiresIn = 0;
 // Armazenar dados da pré-visualização da playlist
 let previewPlaylistData = null;
 
+// Controle de áudio para preview das músicas
+let currentAudio = null;
+let currentPlayingElement = null;
+
 // Mostrar/esconder loader
 function showLoader() {
     loader.classList.remove('hidden');
@@ -201,6 +205,75 @@ function formatDuration(ms) {
     const minutes = Math.floor(ms / 60000);
     const seconds = ((ms % 60000) / 1000).toFixed(0);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+}
+
+// Funções para controle de preview de áudio
+function stopCurrentAudio() {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    
+    if (currentPlayingElement) {
+        currentPlayingElement.classList.remove('playing');
+        const playIcon = currentPlayingElement.querySelector('.play-icon');
+        if (playIcon) {
+            playIcon.textContent = '▶️';
+            playIcon.title = 'Reproduzir preview';
+        }
+        currentPlayingElement = null;
+    }
+}
+
+function playTrackPreview(previewUrl, trackImageContainer) {
+    // Parar áudio atual se houver
+    stopCurrentAudio();
+    
+    if (!previewUrl) {
+        alert('Preview não disponível para esta música.');
+        return;
+    }
+    
+    // Criar novo elemento de áudio
+    currentAudio = new Audio(previewUrl);
+    currentPlayingElement = trackImageContainer;
+    
+    // Adicionar classe visual para indicar que está tocando
+    trackImageContainer.classList.add('playing');
+    
+    // Atualizar ícone de play
+    const playIcon = trackImageContainer.querySelector('.play-icon');
+    if (playIcon) {
+        playIcon.textContent = '⏸️';
+        playIcon.title = 'Pausar preview';
+    }
+    
+    // Event listeners para o áudio
+    currentAudio.addEventListener('ended', () => {
+        stopCurrentAudio();
+    });
+    
+    currentAudio.addEventListener('error', () => {
+        alert('Erro ao reproduzir preview da música.');
+        stopCurrentAudio();
+    });
+    
+    // Reproduzir o áudio
+    currentAudio.play().catch(error => {
+        console.error('Erro ao reproduzir áudio:', error);
+        alert('Erro ao reproduzir preview da música.');
+        stopCurrentAudio();
+    });
+}
+
+function toggleTrackPreview(previewUrl, trackImageContainer) {
+    // Se este elemento já está tocando, pausar
+    if (currentPlayingElement === trackImageContainer && currentAudio && !currentAudio.paused) {
+        stopCurrentAudio();
+    } else {
+        // Caso contrário, reproduzir
+        playTrackPreview(previewUrl, trackImageContainer);
+    }
 }
 
 // Função para verificar se um nome de artista é especial (B2B, special set, etc.)
@@ -378,7 +451,12 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 
                 trackItem.innerHTML = `
                     <input type="checkbox" class="track-checkbox" checked>
-                    <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
+                    <div class="track-image-container">
+                        <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image" 
+                             data-preview-url="${track.preview_url || ''}" 
+                             title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                        <div class="play-icon">▶️</div>
+                    </div>
                     <div class="track-details">
                         <div class="track-name">${track.name}</div>
                         <div class="track-album">${track.album.name}</div>
@@ -386,6 +464,30 @@ function renderPlaylistDetails(artists, isPreview = false) {
                     </div>
                     <div class="track-duration">${formatDuration(track.duration_ms)}</div>
                 `;
+                
+                // Adicionar event listener para preview de áudio
+                const trackImage = trackItem.querySelector('.track-image');
+                const playIcon = trackItem.querySelector('.play-icon');
+                
+                trackImage.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const previewUrl = trackImage.dataset.previewUrl;
+                    if (previewUrl) {
+                        toggleTrackPreview(previewUrl, trackImage.parentElement);
+                    } else {
+                        alert('Preview não disponível para esta música.');
+                    }
+                });
+                
+                playIcon.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const previewUrl = trackImage.dataset.previewUrl;
+                    if (previewUrl) {
+                        toggleTrackPreview(previewUrl, trackImage.parentElement);
+                    } else {
+                        alert('Preview não disponível para esta música.');
+                    }
+                });
                 
                 trackList.appendChild(trackItem);
             });
@@ -521,13 +623,42 @@ async function loadMoreTracks(artistId, trackListElement, artistName) {
             
             trackItem.innerHTML = `
                 <input type="checkbox" class="track-checkbox">
-                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-image-container">
+                    <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image" 
+                         data-preview-url="${track.preview_url || ''}" 
+                         title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                    <div class="play-icon">▶️</div>
+                </div>
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
                     <div class="track-album">${track.album?.name || ''}</div>
                 </div>
                 <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
+            
+            // Adicionar event listener para preview de áudio
+            const trackImage = trackItem.querySelector('.track-image');
+            const playIcon = trackItem.querySelector('.play-icon');
+            
+            trackImage.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
+            
+            playIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
             
             trackListElement.appendChild(trackItem);
         });
@@ -592,13 +723,42 @@ async function searchTracksByName(artistId, query, trackListElement) {
             
             trackItem.innerHTML = `
                 <input type="checkbox" class="track-checkbox">
-                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-image-container">
+                    <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image" 
+                         data-preview-url="${track.preview_url || ''}" 
+                         title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                    <div class="play-icon">▶️</div>
+                </div>
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
                     <div class="track-album">${track.album?.name || ''}</div>
                 </div>
                 <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
+            
+            // Adicionar event listener para preview de áudio
+            const trackImage = trackItem.querySelector('.track-image');
+            const playIcon = trackItem.querySelector('.play-icon');
+            
+            trackImage.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
+            
+            playIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
             
             trackListElement.appendChild(trackItem);
         });
@@ -706,13 +866,42 @@ async function loadRecommendations(artists, limit = 10) {
             
             trackItem.innerHTML = `
                 <input type="checkbox" class="track-checkbox">
-                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-image-container">
+                    <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image" 
+                         data-preview-url="${track.preview_url || ''}" 
+                         title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                    <div class="play-icon">▶️</div>
+                </div>
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
                     <div class="track-album">${artistName} - ${track.album?.name || ''}</div>
                 </div>
                 <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
+            
+            // Adicionar event listener para preview de áudio
+            const trackImage = trackItem.querySelector('.track-image');
+            const playIcon = trackItem.querySelector('.play-icon');
+            
+            trackImage.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
+            
+            playIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
             
             trackList.appendChild(trackItem);
         });
@@ -836,7 +1025,12 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             
             trackItem.innerHTML = `
                 <input type="checkbox" class="track-checkbox">
-                <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
+                <div class="track-image-container">
+                    <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image" 
+                         data-preview-url="${track.preview_url || ''}" 
+                         title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                    <div class="play-icon">▶️</div>
+                </div>
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
                     <div class="track-album">${track.album?.name || ''}</div>
@@ -844,6 +1038,30 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
                 </div>
                 <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
+            
+            // Adicionar event listener para preview de áudio
+            const trackImage = trackItem.querySelector('.track-image');
+            const playIcon = trackItem.querySelector('.play-icon');
+            
+            trackImage.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
+            
+            playIcon.addEventListener('click', (e) => {
+                e.preventDefault();
+                const previewUrl = trackImage.dataset.previewUrl;
+                if (previewUrl) {
+                    toggleTrackPreview(previewUrl, trackImage.parentElement);
+                } else {
+                    alert('Preview não disponível para esta música.');
+                }
+            });
             
             trackListElement.appendChild(trackItem);
         });
@@ -1025,6 +1243,7 @@ async function previewTopArtists() {
                         name: track.name,
                         uri: track.uri,
                         duration_ms: track.duration_ms,
+                        preview_url: track.preview_url,
                         album: {
                             name: track.album.name,
                             image: track.album.images.length > 0 ? track.album.images[0].url : null
@@ -1154,6 +1373,7 @@ async function previewCustomArtists(event) {
                             name: track.name,
                             uri: track.uri,
                             duration_ms: track.duration_ms,
+                            preview_url: track.preview_url,
                             album: {
                                 name: track.album ? track.album.name : 'Unknown Album',
                                 image: track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
@@ -1238,6 +1458,7 @@ async function previewCustomArtists(event) {
                             name: track.name,
                             uri: track.uri,
                             duration_ms: track.duration_ms,
+                            preview_url: track.preview_url,
                             album: {
                                 name: track.album.name,
                                 image: track.album.images.length > 0 ? track.album.images[0].url : null
@@ -1420,7 +1641,10 @@ createPlaylistButton.addEventListener('click', previewTopArtists);
 
 createCustomPlaylistButton.addEventListener('click', previewCustomArtists);
 
-backToProfileButton.addEventListener('click', showProfile);
+backToProfileButton.addEventListener('click', () => {
+    stopCurrentAudio();
+    showProfile();
+});
 
 // Event listeners para as abas
 tabs.forEach(tab => {
@@ -1432,4 +1656,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Garantir que o loader esteja escondido inicialmente
     hideLoader();
     checkAuth();
+});
+
+// Parar áudio quando sair da página ou navegar
+window.addEventListener('beforeunload', () => {
+    stopCurrentAudio();
 }); 
