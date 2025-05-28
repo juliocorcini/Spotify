@@ -34,9 +34,44 @@ async function initializeDatabase() {
         user_id VARCHAR(255) REFERENCES users(id),
         external_urls JSONB,
         tracks_total INTEGER DEFAULT 0,
+        artists_count INTEGER DEFAULT 0,
+        type VARCHAR(50) DEFAULT 'custom',
         extra_data JSONB,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+    
+    // Adicionar a coluna type se não existir (para playlists existentes)
+    await pool.query(`
+      ALTER TABLE playlists 
+      ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'custom'
+    `);
+    
+    // Adicionar a coluna artists_count se não existir
+    await pool.query(`
+      ALTER TABLE playlists 
+      ADD COLUMN IF NOT EXISTS artists_count INTEGER DEFAULT 0
+    `);
+    
+    // Migrar playlists existentes para definir o tipo correto baseado na descrição
+    await pool.query(`
+      UPDATE playlists 
+      SET type = CASE 
+        WHEN description LIKE '%artistas favoritos%' OR name LIKE '%Artistas Favoritos%' THEN 'top_artists'
+        ELSE 'custom'
+      END
+      WHERE type IS NULL OR type = 'custom'
+    `);
+    
+    // Tentar atualizar artists_count para playlists que têm dados do extra_data
+    await pool.query(`
+      UPDATE playlists 
+      SET artists_count = CASE 
+        WHEN extra_data ? 'requestedArtists' THEN 
+          json_array_length((extra_data->>'requestedArtists')::json)
+        ELSE 0 
+      END
+      WHERE artists_count = 0 OR artists_count IS NULL
     `);
     
     // Criar índices para melhor performance

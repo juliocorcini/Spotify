@@ -119,12 +119,14 @@ async function registerPlaylist(playlistData, userId, extraData = {}) {
   if (usingDatabase) {
     try {
       await pool.query(`
-        INSERT INTO playlists (id, name, description, user_id, external_urls, tracks_total, extra_data)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO playlists (id, name, description, user_id, external_urls, tracks_total, artists_count, type, extra_data)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
           description = EXCLUDED.description,
           tracks_total = EXCLUDED.tracks_total,
+          artists_count = EXCLUDED.artists_count,
+          type = EXCLUDED.type,
           extra_data = EXCLUDED.extra_data
       `, [
         playlistData.id,
@@ -133,6 +135,8 @@ async function registerPlaylist(playlistData, userId, extraData = {}) {
         userId,
         JSON.stringify(playlistData.external_urls || {}),
         playlistData.tracks?.total || 0,
+        extraData.artistsCount || playlistData.artistsCount || 0,
+        extraData.type || playlistData.type || 'custom',
         JSON.stringify(extraData)
       ]);
     } catch (error) {
@@ -151,6 +155,9 @@ function registerPlaylistFile(playlistData, userId, extraData = {}) {
     ...playlistData,
     userId,
     createdAt: new Date().toISOString(),
+    type: extraData.type || playlistData.type || 'custom',
+    artistsCount: extraData.artistsCount || playlistData.artistsCount || 0,
+    trackCount: playlistData.tracks?.total || 0,
     ...extraData
   });
   
@@ -199,6 +206,8 @@ async function getPlaylists() {
           p.user_id as "userId", 
           p.external_urls as "external_urls", 
           p.tracks_total, 
+          p.artists_count,
+          p.type,
           p.extra_data, 
           p.created_at as "createdAt",
           u.display_name as "userDisplayName"
@@ -209,6 +218,8 @@ async function getPlaylists() {
       
       return result.rows.map(playlist => ({
         ...playlist,
+        trackCount: playlist.tracks_total,
+        artistsCount: playlist.artists_count,
         external_urls: typeof playlist.external_urls === 'string' ? JSON.parse(playlist.external_urls) : playlist.external_urls,
         extra_data: typeof playlist.extra_data === 'string' ? JSON.parse(playlist.extra_data) : playlist.extra_data
       }));
@@ -233,6 +244,8 @@ async function getPlaylist(playlistId) {
           p.user_id as "userId", 
           p.external_urls as "external_urls", 
           p.tracks_total, 
+          p.artists_count,
+          p.type,
           p.extra_data, 
           p.created_at as "createdAt",
           u.display_name as "userDisplayName"
@@ -245,6 +258,8 @@ async function getPlaylist(playlistId) {
         const playlist = result.rows[0];
         return {
           ...playlist,
+          trackCount: playlist.tracks_total,
+          artistsCount: playlist.artists_count,
           external_urls: typeof playlist.external_urls === 'string' ? JSON.parse(playlist.external_urls) : playlist.external_urls,
           extra_data: typeof playlist.extra_data === 'string' ? JSON.parse(playlist.extra_data) : playlist.extra_data
         };

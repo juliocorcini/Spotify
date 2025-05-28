@@ -225,17 +225,41 @@ function stopCurrentAudio() {
     }
 }
 
-function playTrackPreview(previewUrl, trackImageContainer) {
+async function playTrackPreview(previewUrl, trackImageContainer, trackId = null) {
     // Parar áudio atual se houver
     stopCurrentAudio();
     
-    if (!previewUrl) {
+    let finalPreviewUrl = previewUrl;
+    
+    // Se não há preview_url e temos trackId, tentar buscar via nossa API
+    if (!finalPreviewUrl && trackId) {
+        try {
+            showLoader();
+            const response = await fetch(`/track-preview/${trackId}`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+            
+            const result = await response.json();
+            if (result.success && result.preview_url) {
+                finalPreviewUrl = result.preview_url;
+                console.log(`Preview encontrado via ${result.source}:`, finalPreviewUrl);
+            }
+        } catch (error) {
+            console.error('Erro ao buscar preview:', error);
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    if (!finalPreviewUrl) {
         alert('Preview não disponível para esta música.');
         return;
     }
     
     // Criar novo elemento de áudio
-    currentAudio = new Audio(previewUrl);
+    currentAudio = new Audio(finalPreviewUrl);
     currentPlayingElement = trackImageContainer;
     
     // Adicionar classe visual para indicar que está tocando
@@ -266,7 +290,7 @@ function playTrackPreview(previewUrl, trackImageContainer) {
     });
 }
 
-function toggleTrackPreview(previewUrl, trackImageContainer) {
+function toggleTrackPreview(previewUrl, trackImageContainer, trackId = null) {
     // Se este elemento já está tocando, pausar
     if (currentPlayingElement === trackImageContainer && currentAudio && !currentAudio.paused) {
         stopCurrentAudio();
@@ -507,28 +531,7 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 `;
                 
                 // Adicionar event listener para preview de áudio
-                const trackImage = trackItem.querySelector('.track-image');
-                const playIcon = trackItem.querySelector('.play-icon');
-                
-                trackImage.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const previewUrl = trackImage.dataset.previewUrl;
-                    if (previewUrl) {
-                        toggleTrackPreview(previewUrl, trackImage.parentElement);
-                    } else {
-                        alert('Preview não disponível para esta música.');
-                    }
-                });
-                
-                playIcon.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const previewUrl = trackImage.dataset.previewUrl;
-                    if (previewUrl) {
-                        toggleTrackPreview(previewUrl, trackImage.parentElement);
-                    } else {
-                        alert('Preview não disponível para esta música.');
-                    }
-                });
+                addPreviewEventListeners(trackItem);
                 
                 trackList.appendChild(trackItem);
             });
@@ -592,6 +595,22 @@ function renderPlaylistDetails(artists, isPreview = false) {
         // Adicionar botão de criar playlist no final da página
         addBottomButtons();
     }
+}
+
+// Função utilitária para adicionar event listeners de preview
+function addPreviewEventListeners(trackItem) {
+    const trackImage = trackItem.querySelector('.track-image');
+    const playIcon = trackItem.querySelector('.play-icon');
+    const trackId = trackItem.dataset.trackId;
+    
+    const handlePreviewClick = (e) => {
+        e.preventDefault();
+        const previewUrl = trackImage.dataset.previewUrl;
+        toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
+    };
+    
+    trackImage.addEventListener('click', handlePreviewClick);
+    playIcon.addEventListener('click', handlePreviewClick);
 }
 
 // Função para carregar mais faixas de um artista
@@ -665,28 +684,7 @@ async function loadMoreTracks(artistId, trackListElement, artistName) {
             `;
             
             // Adicionar event listener para preview de áudio
-            const trackImage = trackItem.querySelector('.track-image');
-            const playIcon = trackItem.querySelector('.play-icon');
-            
-            trackImage.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
-            
-            playIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
+            addPreviewEventListeners(trackItem);
             
             trackListElement.appendChild(trackItem);
         });
@@ -765,28 +763,7 @@ async function searchTracksByName(artistId, query, trackListElement) {
             `;
             
             // Adicionar event listener para preview de áudio
-            const trackImage = trackItem.querySelector('.track-image');
-            const playIcon = trackItem.querySelector('.play-icon');
-            
-            trackImage.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
-            
-            playIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
+            addPreviewEventListeners(trackItem);
             
             trackListElement.appendChild(trackItem);
         });
@@ -908,28 +885,7 @@ async function loadRecommendations(artists, limit = 10) {
             `;
             
             // Adicionar event listener para preview de áudio
-            const trackImage = trackItem.querySelector('.track-image');
-            const playIcon = trackItem.querySelector('.play-icon');
-            
-            trackImage.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
-            
-            playIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
+            addPreviewEventListeners(trackItem);
             
             trackList.appendChild(trackItem);
         });
@@ -1064,28 +1020,7 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             `;
             
             // Adicionar event listener para preview de áudio
-            const trackImage = trackItem.querySelector('.track-image');
-            const playIcon = trackItem.querySelector('.play-icon');
-            
-            trackImage.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
-            
-            playIcon.addEventListener('click', (e) => {
-                e.preventDefault();
-                const previewUrl = trackImage.dataset.previewUrl;
-                if (previewUrl) {
-                    toggleTrackPreview(previewUrl, trackImage.parentElement);
-                } else {
-                    alert('Preview não disponível para esta música.');
-                }
-            });
+            addPreviewEventListeners(trackItem);
             
             trackListElement.appendChild(trackItem);
         });

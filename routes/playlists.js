@@ -50,7 +50,10 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
       tracks: { total: trackUris.length }
     };
     
-    await registerPlaylist(playlistDetails, userId);
+    await registerPlaylist(playlistDetails, userId, { 
+      type: 'custom',
+      artistsCount: 0 // Playlist manual não tem artistas específicos
+    });
     
     res.status(200).json({
       success: true,
@@ -204,7 +207,12 @@ router.post('/create-custom-playlist', requireSpotifyAuth, async (req, res) => {
       artistsCount: artists.length
     };
     
-    await registerPlaylist(playlistDetails, userId, { requestedArtists: artists, foundArtists: foundArtists });
+    await registerPlaylist(playlistDetails, userId, { 
+      requestedArtists: artists, 
+      foundArtists: foundArtists,
+      type: 'custom',
+      artistsCount: foundArtists.filter(a => !a.notFound && !a.error).length
+    });
     
     res.status(200).json({
       success: true,
@@ -318,7 +326,12 @@ router.post('/create-artist-playlist', requireSpotifyAuth, async (req, res) => {
       artistsCount: allArtistsData.length
     };
     
-    await registerPlaylist(playlistDetails, userId, { requestedArtists: topArtistNames, foundArtists: foundArtists });
+    await registerPlaylist(playlistDetails, userId, { 
+      requestedArtists: topArtistNames, 
+      foundArtists: foundArtists,
+      type: 'top_artists',
+      artistsCount: foundArtists.filter(a => !a.error).length
+    });
     
     res.status(200).json({
       success: true,

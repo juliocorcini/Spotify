@@ -16,8 +16,9 @@
     "dotenv": "^16.0.3",
     "express": "^4.18.2",
     "node-fetch": "^2.6.9",
-    "spotify-web-api-node": "^5.0.2",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "spotify-preview-finder": "^1.1.1",
+    "spotify-web-api-node": "^5.0.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

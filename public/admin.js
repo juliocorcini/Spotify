@@ -210,12 +210,12 @@ function renderPlaylistTable() {
             <td>${playlist.name}</td>
             <td><span class="badge ${badgeClass}">${typeText}</span></td>
             <td>${playlist.artistsCount || 'N/A'}</td>
-            <td>${playlist.trackCount || '0'}</td>
+            <td>${playlist.tracks_total || playlist.trackCount || '0'}</td>
             <td>${formatDate(playlist.createdAt)}</td>
             <td>${getUserName(playlist.userId)}</td>
             <td>
                 <button class="action-button view-playlist" data-id="${playlist.id}">Ver detalhes</button>
-                <a href="${playlist.url}" target="_blank" class="action-button">Abrir no Spotify</a>
+                <a href="${playlist.external_urls?.spotify || '#'}" target="_blank" class="action-button">Abrir no Spotify</a>
             </td>
         `;
         
@@ -352,16 +352,32 @@ function showPlaylistDetails(playlistId) {
 
 // Renderizar detalhes básicos da playlist (sem informações dos artistas)
 function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
+    // Tentar extrair nomes dos artistas do extra_data
+    let artistsList = 'N/A';
+    if (playlist.extra_data && playlist.extra_data.foundArtists) {
+        const foundArtistsNames = playlist.extra_data.foundArtists
+            .filter(artist => !artist.notFound && !artist.error)
+            .map(artist => artist.name || artist.requestedName)
+            .filter(name => name);
+        
+        if (foundArtistsNames.length > 0) {
+            artistsList = foundArtistsNames.join(', ');
+        }
+    } else if (playlist.extra_data && playlist.extra_data.requestedArtists) {
+        // Fallback para artistas solicitados
+        artistsList = playlist.extra_data.requestedArtists.join(', ');
+    }
+
     modalBody.innerHTML = `
         <div class="playlist-details">
             <p><strong>Nome:</strong> ${playlist.name}</p>
             <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
             <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${playlist.artistsCount || 'N/A'}</p>
-            <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
+            <p><strong>Artistas:</strong> ${artistsList}</p>
+            <p><strong>Faixas:</strong> ${playlist.tracks_total || playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
             <p><strong>Criada por:</strong> ${userInfo}</p>
-            <p><strong>Link:</strong> <a href="${playlist.url}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
+            <p><strong>Link:</strong> <a href="${playlist.external_urls?.spotify || '#'}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
         </div>
     `;
     
@@ -423,7 +439,12 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
             <p><strong>Nome:</strong> ${playlist.name}</p>
             <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
             <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${playlist.artistsCount || 'N/A'}</p>
+            <p><strong>Artistas:</strong> ${playlist.foundArtists ? 
+                playlist.foundArtists
+                    .filter(artist => !artist.notFound && !artist.error)
+                    .map(artist => artist.name || artist.requestedName)
+                    .join(', ') || 'N/A' : 
+                (playlist.artistsCount || 'N/A')}</p>
             <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
             <p><strong>Criada por:</strong> ${userInfo}</p>
