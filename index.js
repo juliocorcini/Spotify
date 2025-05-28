@@ -261,33 +261,99 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
                     const searchResult = await withRetry(() => spotifyApi.search(query, ['track'], { limit: actualLimit }));
                     
                     if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-                        // Filtrar apenas faixas onde AMBOS os artistas do B2B estão creditados
-                        const collaborationTracks = searchResult.body.tracks.items.filter(track => {
+                        // Filtrar apenas faixas onde PELO MENOS UM dos artistas do B2B está creditado
+                        const relevantTracks = searchResult.body.tracks.items.filter(track => {
                             const trackArtistIds = track.artists.map(artist => artist.id);
-                            // Verificar se pelo menos 2 dos artistas B2B estão na faixa
+                            // Verificar se pelo menos 1 dos artistas B2B está na faixa
+                            const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
+                            return foundArtists.length >= 1;
+                        });
+                        
+                        // Separar colaborações (2+ artistas B2B) de outras (1 artista B2B)
+                        const collaborationTracks = relevantTracks.filter(track => {
+                            const trackArtistIds = track.artists.map(artist => artist.id);
                             const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
                             return foundArtists.length >= 2;
                         });
                         
+                        const otherRelevantTracks = relevantTracks.filter(track => {
+                            const trackArtistIds = track.artists.map(artist => artist.id);
+                            const foundArtists = artists.filter(artist => trackArtistIds.includes(artist.id));
+                            return foundArtists.length === 1;
+                        });
+                        
                         // Adicionar as colaborações encontradas com prioridade
                         collaborationTracks.forEach(track => {
-                            // Determinar qual artista é o principal (primeiro creditado)
-                            const primaryB2BArtist = artists.find(artist => 
-                                track.artists[0] && track.artists[0].id === artist.id
-                            ) || artists[0];
+                            // Determinar quais artistas B2B estão creditados nesta faixa
+                            const b2bArtistsInTrack = artists.filter(artist => 
+                                track.artists.some(trackArtist => trackArtist.id === artist.id)
+                            );
+                            
+                            // Se há pelo menos 2 artistas B2B na faixa, é uma colaboração real
+                            const isRealCollaboration = b2bArtistsInTrack.length >= 2;
+                            
+                            // Debug log para entender o que está acontecendo
+                            console.log(`🎵 Track: "${track.name}"`);
+                            console.log(`🎤 All track artists: ${track.artists.map(a => a.name).join(', ')}`);
+                            console.log(`🤝 B2B artists in track: ${b2bArtistsInTrack.map(a => a.name).join(', ')}`);
+                            console.log(`✅ Is real collaboration: ${isRealCollaboration}`);
                             
                             const trackWithInfo = {
                                 ...track,
                                 fromArtist: {
-                                    id: primaryB2BArtist.id,
-                                    name: primaryB2BArtist.name,
-                                    searchTerm: primaryB2BArtist.searchTerm
+                                    id: b2bArtistsInTrack[0]?.id || artists[0].id,
+                                    name: b2bArtistsInTrack[0]?.name || artists[0].name,
+                                    searchTerm: b2bArtistsInTrack[0]?.searchTerm || artists[0].searchTerm
                                 },
                                 isFromB2B: true,
-                                isCollaboration: true, // Marcar como colaboração
-                                collaboratingArtists: track.artists.filter(artist => 
-                                    artists.some(b2bArtist => b2bArtist.id === artist.id)
-                                ).map(artist => ({ id: artist.id, name: artist.name }))
+                                isCollaboration: isRealCollaboration,
+                                collaboratingArtists: isRealCollaboration ? 
+                                    b2bArtistsInTrack.map(artist => ({ 
+                                        id: artist.id, 
+                                        name: artist.name 
+                                    })) : [],
+                                // Adicionar informação sobre todos os artistas da faixa
+                                allTrackArtists: track.artists.map(artist => ({
+                                    id: artist.id,
+                                    name: artist.name
+                                })),
+                                // Marcar quantos dos artistas B2B estão nesta faixa
+                                b2bArtistsCount: b2bArtistsInTrack.length
+                            };
+                            
+                            allTracks.push(trackWithInfo);
+                        });
+                        
+                        // Adicionar outras faixas relevantes (com apenas 1 artista B2B)
+                        otherRelevantTracks.forEach(track => {
+                            // Determinar qual artista B2B está creditado nesta faixa
+                            const b2bArtistInTrack = artists.find(artist => 
+                                track.artists.some(trackArtist => trackArtist.id === artist.id)
+                            );
+                            
+                            console.log(`🎵 Other track: "${track.name}"`);
+                            console.log(`🎤 All track artists: ${track.artists.map(a => a.name).join(', ')}`);
+                            console.log(`🤝 B2B artist in track: ${b2bArtistInTrack?.name || 'None'}`);
+                            
+                            const trackWithInfo = {
+                                ...track,
+                                fromArtist: {
+                                    id: b2bArtistInTrack?.id || artists[0].id,
+                                    name: b2bArtistInTrack?.name || artists[0].name,
+                                    searchTerm: b2bArtistInTrack?.searchTerm || artists[0].searchTerm
+                                },
+                                isFromB2B: true,
+                                isCollaboration: false,
+                                collaboratingArtists: [],
+                                // Adicionar informação sobre todos os artistas da faixa
+                                allTrackArtists: track.artists.map(artist => ({
+                                    id: artist.id,
+                                    name: artist.name
+                                })),
+                                // Marcar quantos dos artistas B2B estão nesta faixa
+                                b2bArtistsCount: 1,
+                                // Marcar se tem outros artistas além do B2B
+                                hasOtherArtists: track.artists.length > 1
                             };
                             
                             allTracks.push(trackWithInfo);

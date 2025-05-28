@@ -498,12 +498,15 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 // Para B2B, mostrar de qual artista a música vem
                 let artistSourceHtml = '';
                 if (track.fromArtist && track.isFromB2B) {
-                    if (track.isCollaboration) {
-                        // Colaboração entre os artistas B2B
-                        const collabArtists = track.collaboratingArtists ? 
-                            track.collaboratingArtists.map(a => a.name).join(' & ') : 
-                            track.fromArtist.name;
-                        artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração: ${collabArtists}</div>`;
+                    if (track.isCollaboration && track.collaboratingArtists && track.collaboratingArtists.length > 1) {
+                        // Colaboração real entre os artistas B2B
+                        const collabArtists = track.collaboratingArtists.map(a => a.name).join(' & ');
+                        artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração B2B: ${collabArtists}</div>`;
+                    } else if (track.allTrackArtists && track.allTrackArtists.length > 1) {
+                        // Música com múltiplos artistas (pode incluir os do B2B + outros)
+                        const allArtists = track.allTrackArtists.map(a => a.name).join(', ');
+                        const artistType = track.hasOtherArtists ? 'feat.' : 'múltiplos';
+                        artistSourceHtml = `<div class="track-artist-source multi-artist">👥 ${artistType}: ${allArtists}</div>`;
                     } else {
                         // Música individual de um dos artistas
                         artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
@@ -987,12 +990,15 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             // Para B2B, mostrar de qual artista a música vem
             let artistSourceHtml = '';
             if (track.fromArtist && track.isFromB2B) {
-                if (track.isCollaboration) {
-                    // Colaboração entre os artistas B2B
-                    const collabArtists = track.collaboratingArtists ? 
-                        track.collaboratingArtists.map(a => a.name).join(' & ') : 
-                        track.fromArtist.name;
-                    artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração: ${collabArtists}</div>`;
+                if (track.isCollaboration && track.collaboratingArtists && track.collaboratingArtists.length > 1) {
+                    // Colaboração real entre os artistas B2B
+                    const collabArtists = track.collaboratingArtists.map(a => a.name).join(' & ');
+                    artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração B2B: ${collabArtists}</div>`;
+                } else if (track.allTrackArtists && track.allTrackArtists.length > 1) {
+                    // Música com múltiplos artistas (pode incluir os do B2B + outros)
+                    const allArtists = track.allTrackArtists.map(a => a.name).join(', ');
+                    const artistType = track.hasOtherArtists ? 'feat.' : 'múltiplos';
+                    artistSourceHtml = `<div class="track-artist-source multi-artist">👥 ${artistType}: ${allArtists}</div>`;
                 } else {
                     // Música individual de um dos artistas
                     artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;

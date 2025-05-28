@@ -1,0 +1,30 @@
+/* Estilos para indicadores de artistas em B2B */
+.track-artist-source {
+    font-size: 0.85em;
+    margin-top: 2px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.track-artist-source.collaboration {
+    background-color: #ff6b6b;
+    color: white;
+    font-weight: bold;
+}
+
+.track-artist-source.multi-artist {
+    background-color: #4ecdc4;
+    color: white;
+    font-weight: bold;
+}
+
+.track-artist-source.b2b {
+    background-color: #95a5a6;
+    color: white;
+}
+
+.track-artist-source:not(.collaboration):not(.multi-artist):not(.b2b) {
+    background-color: #f0f0f0;
+    color: #333;
+} 
