@@ -16,19 +16,28 @@ async function findPreviewUrl(trackName, artistName, trackId = null) {
     // Verificar cache primeiro
     const cacheKey = trackId || `${artistName}-${trackName}`;
     if (previewCache.has(cacheKey)) {
+      console.log(`📦 Preview encontrado no cache para: ${trackName} - ${artistName}`);
       return previewCache.get(cacheKey);
     }
 
-    // Buscar preview usando a busca direta do pacote
+    console.log(`🔍 Buscando preview para: ${trackName} - ${artistName}`);
+
+    // Buscar preview usando a função direta do pacote
     const searchQuery = `${trackName} ${artistName}`;
-    const result = await spotifyPreviewFinder(searchQuery, 1); // Limitar a 1 resultado
+    const result = await spotifyPreviewFinder(searchQuery);
     
     let previewUrl = null;
     if (result && result.success && result.results && result.results.length > 0) {
+      // O resultado tem formato { success: true, results: [...] }
       const firstResult = result.results[0];
-      if (firstResult.previewUrls && firstResult.previewUrls.length > 0) {
+      if (firstResult && firstResult.previewUrls && firstResult.previewUrls.length > 0) {
         previewUrl = firstResult.previewUrls[0];
+        console.log(`✅ Preview encontrado: ${previewUrl}`);
+      } else {
+        console.log(`❌ Nenhum preview encontrado para: ${trackName} - ${artistName}`);
       }
+    } else {
+      console.log(`❌ Resultado vazio para: ${trackName} - ${artistName}`);
     }
 
     // Armazenar no cache (limitado a 1000 entradas para não consumir muita memória)
@@ -38,7 +47,7 @@ async function findPreviewUrl(trackName, artistName, trackId = null) {
 
     return previewUrl;
   } catch (error) {
-    console.error(`Erro ao buscar preview para "${trackName}" - "${artistName}":`, error.message);
+    console.error(`❌ Erro ao buscar preview para "${trackName}" - "${artistName}":`, error.message);
     return null;
   }
 }

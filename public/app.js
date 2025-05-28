@@ -323,7 +323,7 @@ function toggleTrackPreview(previewUrl, trackImageContainer, trackId = null) {
 // Função para verificar se um nome de artista é especial (B2B, special set, etc.)
 function isSpecialArtistFormat(artistName) {
     if (!artistName) return false;
-    return artistName.includes('B2B') || (artistName.includes('(') && artistName.includes(')'));
+    return artistName.toUpperCase().includes('B2B') || (artistName.includes('(') && artistName.includes(')'));
 }
 
 // Renderizar artistas e faixas na página de playlist
@@ -599,11 +599,15 @@ function renderPlaylistDetails(artists, isPreview = false) {
 function addPreviewEventListeners(trackItem) {
     const trackImage = trackItem.querySelector('.track-image');
     const playIcon = trackItem.querySelector('.play-icon');
-    const trackId = trackItem.dataset.trackId;
     
     const handlePreviewClick = (e) => {
         e.preventDefault();
+        // Obter trackId do dataset do trackItem (não do elemento clicado)
+        const trackId = trackItem.dataset.trackId;
         const previewUrl = trackImage.dataset.previewUrl;
+        
+        console.log(`🎵 Preview clicado - trackId: ${trackId}, previewUrl: "${previewUrl}"`);
+        
         toggleTrackPreview(previewUrl, trackImage.parentElement, trackId);
     };
     
@@ -1042,12 +1046,23 @@ function processArtistName(artistName) {
         isSpecial: false
     };
     
-    // Verificar se é um B2B (back-to-back, dois artistas juntos)
-    if (originalName.includes('B2B')) {
+    // Verificar se é um B2B (back-to-back, dois artistas juntos) - aceitar maiúsculo e minúsculo
+    const nameUpperCase = originalName.toUpperCase();
+    if (nameUpperCase.includes('B2B')) {
         processedInfo.isB2B = true;
         
-        // Extrair os nomes dos artistas
-        const artists = originalName.split('B2B').map(name => name.trim());
+        // Extrair os nomes dos artistas usando case-insensitive
+        let artists;
+        if (originalName.toUpperCase().includes('B2B')) {
+            // Encontrar a posição de B2B (case-insensitive)
+            const b2bIndex = nameUpperCase.indexOf('B2B');
+            const before = originalName.substring(0, b2bIndex).trim();
+            const after = originalName.substring(b2bIndex + 3).trim();
+            artists = [before, after].filter(name => name.length > 0);
+        } else {
+            // Fallback se algo der errado
+            artists = originalName.split(/b2b/i).map(name => name.trim());
+        }
         
         // Nome de exibição permanece o mesmo
         processedInfo.displayName = originalName;
@@ -1262,7 +1277,15 @@ async function previewCustomArtists(event) {
     }
     
     // Obter número de músicas e nome da playlist
-    const tracksCount = tracksPerArtist.value;
+    let tracksCount = tracksPerArtist.value;
+    
+    // Se há B2B na lista, usar um número maior por padrão
+    const hasB2B = artistsList.some(name => isSpecialArtistFormat(name) && name.toUpperCase().includes('B2B'));
+    if (hasB2B && tracksCount == 5) { // Se está no valor padrão
+        tracksCount = 10; // Dobrar para B2B
+        console.log('🎧 B2B detectado, aumentando número de faixas para:', tracksCount);
+    }
+    
     let customPlaylistName = playlistNameInput.value.trim();
     
     showLoader();

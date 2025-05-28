@@ -232,8 +232,16 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       terms = processedArtist.searchTerms;
     }
     
-    // Para B2B, dobrar o limite de faixas já que são 2 artistas
-    const actualLimit = processedArtist.isB2B ? parseInt(limit, 10) * 2 : parseInt(limit, 10);
+    // Para B2B, dobrar o limite de faixas já que são 2 artistas + garantir mínimo de 10
+    let actualLimit;
+    if (processedArtist.isB2B) {
+      const requestedLimit = parseInt(limit, 10);
+      // Para B2B, usar pelo menos 10 músicas, ou dobrar o que foi solicitado se for maior que 5
+      actualLimit = Math.max(10, requestedLimit * 2);
+      console.log(`🎧 B2B detected - Original limit: ${requestedLimit}, Adjusted limit: ${actualLimit}`);
+    } else {
+      actualLimit = parseInt(limit, 10);
+    }
     
     // Array para armazenar todas as faixas
     let allTracks = [];

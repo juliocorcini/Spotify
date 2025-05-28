@@ -67,12 +67,23 @@ function processArtistName(artistName) {
     isSpecial: false
   };
   
-  // Verificar se é um B2B (back-to-back, dois artistas juntos)
-  if (originalName.includes('B2B')) {
+  // Verificar se é um B2B (back-to-back, dois artistas juntos) - aceitar maiúsculo e minúsculo
+  const nameUpperCase = originalName.toUpperCase();
+  if (nameUpperCase.includes('B2B')) {
     processedInfo.isB2B = true;
     
-    // Extrair os nomes dos artistas
-    const artists = originalName.split('B2B').map(name => name.trim());
+    // Extrair os nomes dos artistas usando case-insensitive
+    let artists;
+    if (originalName.toUpperCase().includes('B2B')) {
+      // Encontrar a posição de B2B (case-insensitive)
+      const b2bIndex = nameUpperCase.indexOf('B2B');
+      const before = originalName.substring(0, b2bIndex).trim();
+      const after = originalName.substring(b2bIndex + 3).trim();
+      artists = [before, after].filter(name => name.length > 0);
+    } else {
+      // Fallback se algo der errado
+      artists = originalName.split(/b2b/i).map(name => name.trim());
+    }
     
     // Nome de exibição permanece o mesmo
     processedInfo.displayName = originalName;
@@ -93,7 +104,7 @@ function processArtistName(artistName) {
       // Fallback se não conseguirmos dividir corretamente
       processedInfo.searchTerms.push(originalName);
     }
-  } 
+  }
   // Verificar se é um special set ou similar (entre parênteses)
   else if (originalName.includes('(') && originalName.includes(')')) {
     processedInfo.isSpecial = true;
