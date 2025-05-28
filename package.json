@@ -1,7 +1,7 @@
 {
   "name": "artisttoplaylist",
   "version": "1.0.0",
-  "description": "Spotify API service for connecting to a Spotify account",
+  "description": "Modular Spotify API service with advanced recommendations, playlist creation, and artist management features",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
