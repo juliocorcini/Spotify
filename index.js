@@ -168,7 +168,7 @@ app.get('/personalized-artist-tracks/:artistId', requireSpotifyAuth, async (req,
 app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res) => {
   try {
     const { artistId } = req.params;
-    const { limit = 10, displayName, searchTerms } = req.query;
+    const { limit = 10, displayName, searchTerms, individualArtists } = req.query;
     
     if (!artistId || !displayName) {
       return res.status(400).json({ error: 'Artist ID and display name are required' });
@@ -183,6 +183,15 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       terms = [];
     }
     
+    // Parse individualArtists if provided (for B2B)
+    let artists = [];
+    try {
+      artists = individualArtists ? JSON.parse(individualArtists) : [];
+    } catch (error) {
+      console.error('Error parsing individual artists:', error);
+      artists = [];
+    }
+    
     // Processar o nome do artista
     const processedArtist = processArtistName(displayName);
     
@@ -191,53 +200,128 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       terms = processedArtist.searchTerms;
     }
     
+    // Para B2B, dobrar o limite de faixas já que são 2 artistas
+    const actualLimit = processedArtist.isB2B ? parseInt(limit, 10) * 2 : parseInt(limit, 10);
+    
     // Array para armazenar todas as faixas
     let allTracks = [];
     
-    // Quantidade de faixas a buscar para cada termo, distribuindo o limite
-    const tracksPerTerm = Math.ceil(parseInt(limit, 10) / Math.max(1, terms.length));
-    
-    // Para cada termo de busca, buscar faixas
-    for (const [index, term] of terms.entries()) {
-      try {
-        // Para B2B sets, buscamos músicas que contenham ambos os artistas
-        if (processedArtist.isB2B && index < 2) {
-          // Buscar colaborações diretas entre os artistas
-          const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
+    // Se é B2B e temos artistas individuais, buscar faixas de cada um
+    if (processedArtist.isB2B && artists.length > 0) {
+      const tracksPerArtist = Math.ceil(actualLimit / artists.length);
+      
+      for (const artist of artists) {
+        try {
+          // Buscar faixas populares do artista
+          const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(artist.id, 'BR'));
           
-          if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+          if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
+            // Adicionar informação sobre qual artista do B2B cada faixa pertence
+            const tracksWithArtistInfo = tracksResult.body.tracks.slice(0, tracksPerArtist).map(track => ({
+              ...track,
+              fromArtist: {
+                id: artist.id,
+                name: artist.name,
+                searchTerm: artist.searchTerm
+              },
+              isFromB2B: true
+            }));
+            
+            allTracks = [...allTracks, ...tracksWithArtistInfo];
           }
-        } 
-        // Para special sets, buscamos músicas do artista com o tipo especial
-        else if (processedArtist.isSpecial && index === 0) {
-          // Buscar faixas específicas para o tipo de set especial
-          const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
           
-          if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
-            allTracks = [...allTracks, ...searchResult.body.tracks.items];
+          // Também buscar algumas faixas de álbuns para maior variedade
+          try {
+            const albumsResult = await withRetry(() => spotifyApi.getArtistAlbums(artist.id, {
+              include_groups: 'album,single',
+              limit: 3,
+              offset: 0
+            }));
+            
+            for (const album of albumsResult.body.items.slice(0, 2)) { // Apenas 2 álbuns por artista
+              try {
+                const albumTracksResult = await withRetry(() => spotifyApi.getAlbumTracks(album.id, { limit: 3 }));
+                
+                const albumTracks = albumTracksResult.body.items
+                  .filter(track => track.artists.some(trackArtist => trackArtist.id === artist.id))
+                  .slice(0, 2) // Máximo 2 faixas por álbum
+                  .map(track => ({
+                    ...track,
+                    album: {
+                      id: album.id,
+                      name: album.name,
+                      images: album.images
+                    },
+                    fromArtist: {
+                      id: artist.id,
+                      name: artist.name,
+                      searchTerm: artist.searchTerm
+                    },
+                    isFromB2B: true
+                  }));
+                
+                allTracks = [...allTracks, ...albumTracks];
+              } catch (error) {
+                console.error(`Error getting album tracks for ${album.id}:`, error);
+              }
+            }
+          } catch (error) {
+            console.error(`Error getting albums for artist ${artist.id}:`, error);
           }
+        } catch (error) {
+          console.error(`Error fetching tracks for B2B artist "${artist.name}":`, error);
         }
-        // Caso seja um artista individual (seja parte de um B2B ou artista normal)
-        else {
-          // Obter o ID do artista através da busca
-          const artistResult = await withRetry(() => spotifyApi.searchArtists(term, { limit: 1 }));
-          
-          if (artistResult.body.artists && artistResult.body.artists.items.length > 0) {
-            const foundArtistId = artistResult.body.artists.items[0].id;
+      }
+    } else {
+      // Lógica original para não-B2B ou quando não temos artistas individuais
+      const tracksPerTerm = Math.ceil(actualLimit / Math.max(1, terms.length));
+      
+      // Para cada termo de busca, buscar faixas
+      for (const [index, term] of terms.entries()) {
+        try {
+          // Para special sets, buscamos músicas do artista com o tipo especial
+          if (processedArtist.isSpecial && index === 0) {
+            // Buscar faixas específicas para o tipo de set especial
+            const searchResult = await withRetry(() => spotifyApi.search(term, ['track'], { limit: 20 }));
             
-            // Buscar faixas populares deste artista
-            const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(foundArtistId, 'BR'));
-            
-            if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
-              // Limitar ao número desejado por termo
-              const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm);
-              allTracks = [...allTracks, ...topTracks];
+            if (searchResult.body.tracks && searchResult.body.tracks.items.length > 0) {
+              const tracksWithInfo = searchResult.body.tracks.items.map(track => ({
+                ...track,
+                isSpecialSet: true,
+                specialType: processedArtist.originalName
+              }));
+              allTracks = [...allTracks, ...tracksWithInfo];
             }
           }
+          // Caso seja um artista individual
+          else {
+            // Obter o ID do artista através da busca
+            const artistResult = await withRetry(() => spotifyApi.searchArtists(term, { limit: 1 }));
+            
+            if (artistResult.body.artists && artistResult.body.artists.items.length > 0) {
+              const foundArtistId = artistResult.body.artists.items[0].id;
+              const foundArtistName = artistResult.body.artists.items[0].name;
+              
+              // Buscar faixas populares deste artista
+              const tracksResult = await withRetry(() => spotifyApi.getArtistTopTracks(foundArtistId, 'BR'));
+              
+              if (tracksResult.body.tracks && tracksResult.body.tracks.length > 0) {
+                // Limitar ao número desejado por termo
+                const topTracks = tracksResult.body.tracks.slice(0, tracksPerTerm).map(track => ({
+                  ...track,
+                  fromArtist: {
+                    id: foundArtistId,
+                    name: foundArtistName,
+                    searchTerm: term
+                  }
+                }));
+                allTracks = [...allTracks, ...topTracks];
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching tracks for term "${term}":`, error);
         }
-      } catch (error) {
-        console.error(`Error fetching tracks for term "${term}":`, error);
       }
     }
     
@@ -252,17 +336,62 @@ app.get('/artist-special-tracks/:artistId', requireSpotifyAuth, async (req, res)
       }
     }
     
-    // Limitar ao número solicitado
-    const limitedTracks = uniqueTracks.slice(0, parseInt(limit, 10));
-    
-    // Retornar as faixas encontradas
-    res.status(200).json({
-      displayName: displayName,
-      originalName: processedArtist.originalName,
-      isB2B: processedArtist.isB2B,
-      isSpecial: processedArtist.isSpecial,
-      tracks: limitedTracks
-    });
+    // Para B2B, embaralhar as faixas para misturar os artistas
+    if (processedArtist.isB2B) {
+      // Separar faixas por artista
+      const artistBuckets = new Map();
+      
+      uniqueTracks.forEach(track => {
+        const artistKey = track.fromArtist ? track.fromArtist.id : 'unknown';
+        if (!artistBuckets.has(artistKey)) {
+          artistBuckets.set(artistKey, []);
+        }
+        artistBuckets.get(artistKey).push(track);
+      });
+      
+      // Intercalar faixas dos diferentes artistas
+      const interleavedTracks = [];
+      const maxLength = Math.max(...Array.from(artistBuckets.values()).map(bucket => bucket.length));
+      
+      for (let i = 0; i < maxLength; i++) {
+        for (const [artistId, tracks] of artistBuckets.entries()) {
+          if (i < tracks.length) {
+            interleavedTracks.push(tracks[i]);
+          }
+        }
+      }
+      
+      // Limitar ao número solicitado
+      const limitedTracks = interleavedTracks.slice(0, actualLimit);
+      
+      // Retornar as faixas encontradas com informações B2B
+      res.status(200).json({
+        displayName: displayName,
+        originalName: processedArtist.originalName,
+        isB2B: processedArtist.isB2B,
+        isSpecial: processedArtist.isSpecial,
+        tracks: limitedTracks,
+        individualArtists: artists,
+        totalTracksRequested: actualLimit,
+        artistDistribution: Array.from(artistBuckets.entries()).map(([artistId, tracks]) => ({
+          artistId,
+          artistName: tracks[0]?.fromArtist?.name || 'Unknown',
+          trackCount: tracks.length
+        }))
+      });
+    } else {
+      // Limitar ao número solicitado para não-B2B
+      const limitedTracks = uniqueTracks.slice(0, actualLimit);
+      
+      // Retornar as faixas encontradas
+      res.status(200).json({
+        displayName: displayName,
+        originalName: processedArtist.originalName,
+        isB2B: processedArtist.isB2B,
+        isSpecial: processedArtist.isSpecial,
+        tracks: limitedTracks
+      });
+    }
     
   } catch (err) {
     console.error('Error getting tracks for special artist:', err);

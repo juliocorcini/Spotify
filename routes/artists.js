@@ -137,6 +137,7 @@ router.get('/search-artist-special', requireSpotifyAuth, async (req, res) => {
     // Array para armazenar resultados de todas as buscas
     let allResults = [];
     let primaryArtist = null;
+    let individualArtists = []; // Para B2B, armazenar artistas individuais
     
     // Realizar busca para cada termo
     for (const [index, searchTerm] of processedArtist.searchTerms.entries()) {
@@ -153,6 +154,23 @@ router.get('/search-artist-special', requireSpotifyAuth, async (req, res) => {
             isSpecial: processedArtist.isSpecial,
             searchTerms: processedArtist.searchTerms
           };
+        }
+        
+        // Para B2B, coletar artistas individuais
+        if (processedArtist.isB2B && result.body.artists.items.length > 0) {
+          // Cada termo de busca individual (não colaboração) representa um artista do B2B
+          if (!searchTerm.includes(' ') || searchTerm.split(' ').length === 1 || 
+              (searchTerm.split(' ').length === 2 && !searchTerm.toLowerCase().includes('featuring') && !searchTerm.toLowerCase().includes('feat'))) {
+            const artistFound = result.body.artists.items[0];
+            
+            // Verificar se ainda não foi adicionado
+            if (!individualArtists.find(a => a.id === artistFound.id)) {
+              individualArtists.push({
+                ...artistFound,
+                searchTerm: searchTerm // Para saber qual termo de busca encontrou este artista
+              });
+            }
+          }
         }
         
         // Adicionar resultados dessa busca ao array geral
@@ -174,11 +192,25 @@ router.get('/search-artist-special', requireSpotifyAuth, async (req, res) => {
       };
     }
     
-    // Responder com o artista principal e todos os resultados
+    // Para B2B, preparar as imagens dos artistas individuais
+    let combinedImages = [];
+    if (processedArtist.isB2B && individualArtists.length > 0) {
+      combinedImages = individualArtists.map(artist => ({
+        artistId: artist.id,
+        artistName: artist.name,
+        images: artist.images || []
+      }));
+    }
+    
+    // Responder com o artista principal e informações específicas do formato
     res.status(200).json({
       primaryArtist: primaryArtist,
       allResults: allResults,
-      processedInfo: processedArtist
+      processedInfo: processedArtist,
+      individualArtists: individualArtists, // Artistas individuais para B2B
+      combinedImages: combinedImages, // Imagens dos artistas para B2B
+      isB2B: processedArtist.isB2B,
+      isSpecial: processedArtist.isSpecial
     });
     
   } catch (err) {

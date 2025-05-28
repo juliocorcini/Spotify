@@ -223,19 +223,6 @@ function renderPlaylistDetails(artists, isPreview = false) {
         `;
         playlistArtists.appendChild(createButtonDiv);
         
-        // Adicionar instruções sobre formatos especiais de artistas
-        const specialFormatsInfo = document.createElement('div');
-        specialFormatsInfo.className = 'artist-formats-info';
-        specialFormatsInfo.innerHTML = `
-            <div class="info-title">Dicas para buscar artistas:</div>
-            <ul>
-                <li><strong>Artistas normais:</strong> Digite o nome do artista normalmente, ex: "ARGY", "Vintage Culture"</li>
-                <li><strong>Sets B2B (back-to-back):</strong> Digite com "B2B" entre os nomes dos artistas, ex: "DUBDOGZ B2B CAT DEALERS"</li>
-                <li><strong>Sets especiais:</strong> Digite o tipo do set/musica entre parênteses, ex: "VINTAGE CULTURE (FOR A FEELING)"</li>
-            </ul>
-        `;
-        playlistArtists.appendChild(specialFormatsInfo);
-        
         // Adicionar event listeners
         document.getElementById('confirm-create-playlist').addEventListener('click', confirmCreatePlaylist);
         document.getElementById('cancel-create-playlist').addEventListener('click', () => {
@@ -294,12 +281,31 @@ function renderPlaylistDetails(artists, isPreview = false) {
         artistElement.className = 'artist-item';
         artistElement.dataset.artistId = artist.id;
         
+        // Para B2B, armazenar informações dos artistas individuais
+        if (artist.isSpecialFormat && artist.specialInfo && artist.specialInfo.isB2B && artist.individualArtists) {
+            artistElement.dataset.individualArtists = JSON.stringify(artist.individualArtists);
+        }
+        
         // Info do artista
         const artistInfo = document.createElement('div');
         artistInfo.className = 'artist-info';
         
-        // Imagem do artista
-        const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
+        // Para B2B, mostrar imagens dos artistas individuais
+        let artistImageHtml = '';
+        if (artist.isSpecialFormat && artist.specialInfo && artist.specialInfo.isB2B && artist.combinedImages && artist.combinedImages.length > 0) {
+            // B2B: mostrar imagens dos 2 artistas
+            artistImageHtml = '<div class="b2b-artist-images">';
+            artist.combinedImages.forEach(artistImg => {
+                const imgSrc = artistImg.images && artistImg.images.length > 0 ? 
+                    artistImg.images[0].url : 'https://placehold.co/40x40?text=No+Image';
+                artistImageHtml += `<img src="${imgSrc}" alt="${artistImg.artistName}" title="${artistImg.artistName}">`;
+            });
+            artistImageHtml += '</div>';
+        } else {
+            // Artista normal ou special set: imagem única
+            const artistImageSrc = artist.image || 'https://placehold.co/80x80?text=No+Image';
+            artistImageHtml = `<img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">`;
+        }
         
         // Adicionar aviso se o nome do artista não for exatamente o solicitado
         const nameWarningHtml = artist.nameWarning ? 
@@ -309,14 +315,14 @@ function renderPlaylistDetails(artists, isPreview = false) {
         let specialFormatHtml = '';
         if (artist.isSpecialFormat) {
             if (artist.specialInfo && artist.specialInfo.isB2B) {
-                specialFormatHtml = `<div class="artist-special-format">B2B Set (Conjunto de artistas)</div>`;
+                specialFormatHtml = `<div class="artist-special-format">🎧 B2B Set (Conjunto de artistas) - ${artist.tracks ? artist.tracks.length : 0} músicas</div>`;
             } else if (artist.specialInfo && artist.specialInfo.isSpecial) {
-                specialFormatHtml = `<div class="artist-special-format">Set Especial</div>`;
+                specialFormatHtml = `<div class="artist-special-format">✨ Set Especial</div>`;
             }
         }
         
         artistInfo.innerHTML = `
-            <img src="${artistImageSrc}" alt="${artist.name}" class="artist-image">
+            ${artistImageHtml}
             <div class="artist-details">
                 <div class="artist-name">${artist.name}</div>
                 ${nameWarningHtml}
@@ -359,12 +365,24 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 trackItem.dataset.trackId = track.id;
                 
                 const albumImageSrc = track.album.image || 'https://placehold.co/50x50?text=No+Image';
+                
+                // Para B2B, mostrar de qual artista a música vem
+                let artistSourceHtml = '';
+                if (track.fromArtist && track.isFromB2B) {
+                    artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+                } else if (track.fromArtist) {
+                    artistSourceHtml = `<div class="track-artist-source">🎵 Artista: ${track.fromArtist.name}</div>`;
+                } else if (track.isSpecialSet) {
+                    artistSourceHtml = `<span class="special-set-indicator">${track.specialType}</span>`;
+                }
+                
                 trackItem.innerHTML = `
                     <input type="checkbox" class="track-checkbox" checked>
                     <img src="${albumImageSrc}" alt="${track.album.name}" class="track-image">
                     <div class="track-details">
                         <div class="track-name">${track.name}</div>
                         <div class="track-album">${track.album.name}</div>
+                        ${artistSourceHtml}
                     </div>
                     <div class="track-duration">${formatDuration(track.duration_ms)}</div>
                 `;
@@ -749,6 +767,17 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
         const existingTrackIds = Array.from(trackListElement.querySelectorAll('.track-item'))
             .map(item => item.dataset.trackId);
         
+        // Obter informações dos artistas individuais se estiver no elemento pai
+        const artistElement = trackListElement.closest('.artist-item');
+        let individualArtists = [];
+        if (artistElement && artistElement.dataset.individualArtists) {
+            try {
+                individualArtists = JSON.parse(artistElement.dataset.individualArtists);
+            } catch (e) {
+                console.error('Error parsing individual artists:', e);
+            }
+        }
+        
         // Criar termos de busca com base no tipo de set especial
         let searchTerms = [];
         const processedArtist = processArtistName(originalName || artistName);
@@ -756,15 +785,20 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
         // Usar os termos de busca do processamento
         searchTerms = processedArtist.searchTerms;
         
+        // Preparar URL para buscar mais faixas
+        let tracksUrl = `/artist-special-tracks/${artistId}?displayName=${encodeURIComponent(originalName || artistName)}&limit=10&searchTerms=${encodeURIComponent(JSON.stringify(searchTerms))}`;
+        
+        // Para B2B, incluir informações dos artistas individuais
+        if (processedArtist.isB2B && individualArtists.length > 0) {
+            tracksUrl += `&individualArtists=${encodeURIComponent(JSON.stringify(individualArtists))}`;
+        }
+        
         // Buscar faixas usando o endpoint para artistas especiais
-        const response = await fetch(
-            `/artist-special-tracks/${artistId}?displayName=${encodeURIComponent(originalName || artistName)}&limit=10&searchTerms=${encodeURIComponent(JSON.stringify(searchTerms))}`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`
-                }
+        const response = await fetch(tracksUrl, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
             }
-        );
+        });
         
         if (!response.ok) {
             throw new Error(`Erro ao buscar mais músicas para ${artistName}`);
@@ -790,12 +824,23 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             const albumImageSrc = track.album?.images?.length > 0 ? 
                 track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
             
+            // Para B2B, mostrar de qual artista a música vem
+            let artistSourceHtml = '';
+            if (track.fromArtist && track.isFromB2B) {
+                artistSourceHtml = `<div class="track-artist-source b2b">🎵 De: ${track.fromArtist.name}</div>`;
+            } else if (track.fromArtist) {
+                artistSourceHtml = `<div class="track-artist-source">🎵 Artista: ${track.fromArtist.name}</div>`;
+            } else if (track.isSpecialSet) {
+                artistSourceHtml = `<span class="special-set-indicator">${track.specialType}</span>`;
+            }
+            
             trackItem.innerHTML = `
                 <input type="checkbox" class="track-checkbox">
                 <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image">
                 <div class="track-details">
                     <div class="track-name">${track.name}</div>
                     <div class="track-album">${track.album?.name || ''}</div>
+                    ${artistSourceHtml}
                 </div>
                 <div class="track-duration">${formatDuration(track.duration_ms)}</div>
             `;
@@ -1078,15 +1123,20 @@ async function previewCustomArtists(event) {
                     
                     const artist = searchData.primaryArtist;
                     
+                    // Preparar URL para buscar faixas, incluindo artistas individuais para B2B
+                    let tracksUrl = `/artist-special-tracks/${artist.id}?displayName=${encodeURIComponent(artist.displayName)}&limit=${tracksCount}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`;
+                    
+                    // Se temos artistas individuais (B2B), adicionar à URL
+                    if (searchData.individualArtists && searchData.individualArtists.length > 0) {
+                        tracksUrl += `&individualArtists=${encodeURIComponent(JSON.stringify(searchData.individualArtists))}`;
+                    }
+                    
                     // Usar o endpoint especial para buscar faixas
-                    const tracksResponse = await fetch(
-                        `/artist-special-tracks/${artist.id}?displayName=${encodeURIComponent(artist.displayName)}&limit=${tracksCount}&searchTerms=${encodeURIComponent(JSON.stringify(artist.searchTerms))}`,
-                        {
-                            headers: {
-                                'Authorization': `Bearer ${accessToken}`
-                            }
+                    const tracksResponse = await fetch(tracksUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
                         }
-                    );
+                    });
                     
                     if (!tracksResponse.ok) {
                         throw new Error(`Error fetching tracks for ${artistName}`);
@@ -1105,15 +1155,23 @@ async function previewCustomArtists(event) {
                             uri: track.uri,
                             duration_ms: track.duration_ms,
                             album: {
-                                name: track.album.name,
-                                image: track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
-                            }
+                                name: track.album ? track.album.name : 'Unknown Album',
+                                image: track.album && track.album.images && track.album.images.length > 0 ? track.album.images[0].url : null
+                            },
+                            // Preservar informações de origem do artista para B2B
+                            fromArtist: track.fromArtist,
+                            isFromB2B: track.isFromB2B,
+                            isSpecialSet: track.isSpecialSet,
+                            specialType: track.specialType
                         })),
                         isSpecialFormat: true,
                         specialInfo: {
-                            isB2B: artist.isB2B,
-                            isSpecial: artist.isSpecial
-                        }
+                            isB2B: searchData.isB2B || artist.isB2B,
+                            isSpecial: searchData.isSpecial || artist.isSpecial
+                        },
+                        // Para B2B, incluir informações dos artistas individuais e suas imagens
+                        individualArtists: searchData.individualArtists || [],
+                        combinedImages: searchData.combinedImages || []
                     });
                 } else {
                     // Buscar artista normal
