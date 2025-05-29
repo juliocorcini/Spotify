@@ -385,6 +385,32 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
             artistsList = foundArtistsNames.join(', ');
         }
     }
+    // PRIORIDADE 2.5: FALLBACK - Extrair artistas do nome da playlist se começar com "Mix" e não tiver dados salvos
+    else if (playlist.name && playlist.name.startsWith('Mix ')) {
+        // Extrair artistas do nome da playlist (ex: "Mix Gloria Groove, Vintage Culture, ARTBAT")
+        const nameWithoutMix = playlist.name.replace(/^Mix\s+/, ''); // Remove "Mix " do início
+        
+        // Verificar se parece conter artistas (tem vírgulas ou "&")
+        if (nameWithoutMix.includes(',') || nameWithoutMix.includes('&')) {
+            // Dividir por vírgulas e limpar espaços
+            const extractedArtists = nameWithoutMix
+                .split(/[,&]/) // Dividir por vírgula ou &
+                .map(artist => artist.trim())
+                .filter(artist => artist.length > 0 && artist !== 'e'); // Remover vazios e palavras conectoras
+            
+            if (extractedArtists.length > 0) {
+                artistsList = extractedArtists.join(', ');
+                console.log('🎵 Extracted artists from playlist name:', extractedArtists);
+            }
+        } else {
+            // Se não tem vírgulas, pode ser um artista único (ex: "Mix Alok")
+            const singleArtist = nameWithoutMix.trim();
+            if (singleArtist.length > 0) {
+                artistsList = singleArtist;
+                console.log('🎵 Extracted single artist from playlist name:', singleArtist);
+            }
+        }
+    }
     // PRIORIDADE 3: Fallback para trackArtists (mas limitado aos primeiros para evitar lista muito longa)
     else if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
         // Mostrar apenas os primeiros 5 artistas únicos para evitar lista muito longa
@@ -413,7 +439,7 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
         const artistCount = playlist.extra_data.trackArtists.length;
         
         // Só mostrar se tem artistas pesquisados E se a lista é diferente
-        if (playlist.extra_data.requestedArtists && allTrackArtists !== artistsList) {
+        if ((playlist.extra_data.requestedArtists || artistsList !== 'N/A') && allTrackArtists !== artistsList) {
             allArtistsSection = `
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
                     <p><strong>Todos os artistas únicos das faixas (${artistCount}):</strong></p>
@@ -486,6 +512,32 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     } else if (playlist.requestedArtists) {
         artistsList = playlist.requestedArtists.join(', ');
     }
+    // FALLBACK: Extrair artistas do nome da playlist se começar com "Mix" e não tiver dados salvos
+    else if (playlist.name && playlist.name.startsWith('Mix ')) {
+        // Extrair artistas do nome da playlist (ex: "Mix Gloria Groove, Vintage Culture, ARTBAT")
+        const nameWithoutMix = playlist.name.replace(/^Mix\s+/, ''); // Remove "Mix " do início
+        
+        // Verificar se parece conter artistas (tem vírgulas ou "&")
+        if (nameWithoutMix.includes(',') || nameWithoutMix.includes('&')) {
+            // Dividir por vírgulas e limpar espaços
+            const extractedArtists = nameWithoutMix
+                .split(/[,&]/) // Dividir por vírgula ou &
+                .map(artist => artist.trim())
+                .filter(artist => artist.length > 0 && artist !== 'e'); // Remover vazios e palavras conectoras
+            
+            if (extractedArtists.length > 0) {
+                artistsList = extractedArtists.join(', ');
+                console.log('🎵 Extracted artists from playlist name (full view):', extractedArtists);
+            }
+        } else {
+            // Se não tem vírgulas, pode ser um artista único (ex: "Mix Alok")
+            const singleArtist = nameWithoutMix.trim();
+            if (singleArtist.length > 0) {
+                artistsList = singleArtist;
+                console.log('🎵 Extracted single artist from playlist name (full view):', singleArtist);
+            }
+        }
+    }
 
     console.log('✅ Final artists list:', artistsList);
 
@@ -496,7 +548,7 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
         const artistCount = playlist.extra_data.trackArtists.length;
         
         // Só mostrar se tem artistas pesquisados E se a lista é diferente
-        if (playlist.extra_data.requestedArtists && allTrackArtists !== artistsList) {
+        if ((playlist.extra_data.requestedArtists || artistsList !== 'N/A') && allTrackArtists !== artistsList) {
             allArtistsSection = `
                 <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
                     <p><strong>Todos os artistas únicos das faixas (${artistCount}):</strong></p>
