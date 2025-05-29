@@ -1741,6 +1741,14 @@ async function confirmCreatePlaylist() {
             return;
         }
         
+        // Extrair os nomes dos artistas pesquisados originalmente
+        const originalSearchedArtists = previewPlaylistData.artists
+            .filter(artist => !artist.error && !artist.notFound) // Apenas artistas válidos
+            .map(artist => artist.name || artist.requestedName || artist.originalName)
+            .filter(name => name); // Remover nomes vazios
+            
+        console.log('🎤 Original searched artists being sent:', originalSearchedArtists);
+        
         let response;
         
         if (previewPlaylistData.type === 'top') {
@@ -1753,7 +1761,8 @@ async function confirmCreatePlaylist() {
                 },
                 body: JSON.stringify({
                     trackUris: selectedTracks,
-                    playlistName: 'Meus Artistas Favoritos'
+                    playlistName: 'Meus Artistas Favoritos',
+                    originalSearchedArtists: originalSearchedArtists // Adicionar artistas pesquisados
                 })
             });
         } else {
@@ -1766,7 +1775,8 @@ async function confirmCreatePlaylist() {
                 },
                 body: JSON.stringify({
                     trackUris: selectedTracks,
-                    playlistName: previewPlaylistData.playlistName
+                    playlistName: previewPlaylistData.playlistName,
+                    originalSearchedArtists: originalSearchedArtists // Adicionar artistas pesquisados
                 })
             });
         }

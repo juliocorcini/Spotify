@@ -9,11 +9,13 @@ const { compareArtistNames } = require('../utils/artistHelpers');
 // Nova rota para criar playlist a partir de URIs de faixas específicas
 router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, res) => {
   try {
-    const { trackUris, playlistName } = req.body;
+    const { trackUris, playlistName, originalSearchedArtists } = req.body;
     
     if (!trackUris || !Array.isArray(trackUris) || trackUris.length === 0) {
       return res.status(400).json({ error: 'Invalid track URIs list' });
     }
+    
+    console.log('🎤 Received originalSearchedArtists:', originalSearchedArtists);
     
     // 1. Obter o ID do usuário
     const userInfo = await withRetry(() => spotifyApi.getMe());
@@ -70,7 +72,8 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
       tracks: { total: trackUris.length }
     };
     
-    await registerPlaylist(playlistDetails, userId, { 
+    // Preparar dados extras para salvar
+    const extraData = { 
       type: 'custom',
       artistsCount: uniqueArtists.size,
       foundArtists: artistsList.map(artist => ({
@@ -79,14 +82,23 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
         requestedName: artist.name
       })),
       trackArtists: artistsList
-    });
+    };
+    
+    // Se foram fornecidos artistas pesquisados originalmente, adicioná-los
+    if (originalSearchedArtists && Array.isArray(originalSearchedArtists) && originalSearchedArtists.length > 0) {
+      extraData.requestedArtists = originalSearchedArtists;
+      console.log('✅ Saving requestedArtists:', originalSearchedArtists);
+    }
+    
+    await registerPlaylist(playlistDetails, userId, extraData);
     
     res.status(200).json({
       success: true,
       playlist: playlist.body,
       addedTracks: addedTracksResponse.body.items,
       uniqueArtistsCount: uniqueArtists.size,
-      artists: artistsList
+      artists: artistsList,
+      originalSearchedArtists: originalSearchedArtists || []
     });
   } catch (err) {
     console.error('Error creating playlist with custom tracks:', err);

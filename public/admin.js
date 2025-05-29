@@ -364,30 +364,63 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     // Tentar extrair nomes dos artistas do extra_data
     let artistsList = 'N/A';
     
-    // Priorizar trackArtists (para playlists criadas com faixas específicas)
-    if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
-        const artistNames = playlist.extra_data.trackArtists
-            .map(artist => artist.name)
-            .filter(name => name);
-        
-        if (artistNames.length > 0) {
-            artistsList = artistNames.join(', ');
-        }
+    console.log('🔍 Debug playlist data:', playlist);
+    console.log('🔍 Extra data:', playlist.extra_data);
+    
+    // PRIORIDADE 1: Artistas solicitados/pesquisados originalmente (quando o usuário pesquisou artistas específicos)
+    if (playlist.extra_data && playlist.extra_data.requestedArtists && Array.isArray(playlist.extra_data.requestedArtists)) {
+        console.log('🎤 Requested artists found:', playlist.extra_data.requestedArtists);
+        artistsList = playlist.extra_data.requestedArtists.join(', ');
     }
-    // Se não tem trackArtists, tentar foundArtists
-    else if (playlist.extra_data && playlist.extra_data.foundArtists) {
+    // PRIORIDADE 2: Artistas encontrados (filtrar apenas os que foram encontrados com sucesso)
+    else if (playlist.extra_data && playlist.extra_data.foundArtists && Array.isArray(playlist.extra_data.foundArtists)) {
         const foundArtistsNames = playlist.extra_data.foundArtists
             .filter(artist => !artist.notFound && !artist.error)
             .map(artist => artist.name || artist.requestedName)
             .filter(name => name);
         
+        console.log('✅ Found artists:', foundArtistsNames);
+        
         if (foundArtistsNames.length > 0) {
             artistsList = foundArtistsNames.join(', ');
         }
-    } 
-    // Fallback para artistas solicitados
-    else if (playlist.extra_data && playlist.extra_data.requestedArtists) {
-        artistsList = playlist.extra_data.requestedArtists.join(', ');
+    }
+    // PRIORIDADE 3: Fallback para trackArtists (mas limitado aos primeiros para evitar lista muito longa)
+    else if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
+        // Mostrar apenas os primeiros 5 artistas únicos para evitar lista muito longa
+        const artistNames = playlist.extra_data.trackArtists
+            .slice(0, 5) // Limitar a 5 artistas
+            .map(artist => artist.name)
+            .filter(name => name);
+        
+        console.log('🎵 Track artists (limited):', artistNames);
+        
+        if (artistNames.length > 0) {
+            const remaining = playlist.extra_data.trackArtists.length - artistNames.length;
+            artistsList = artistNames.join(', ');
+            if (remaining > 0) {
+                artistsList += ` (+${remaining} outros)`;
+            }
+        }
+    }
+
+    console.log('✅ Final artists list:', artistsList);
+
+    // Preparar seção adicional com todos os artistas únicos das faixas (se diferente dos pesquisados)
+    let allArtistsSection = '';
+    if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
+        const allTrackArtists = playlist.extra_data.trackArtists.map(artist => artist.name).join(', ');
+        const artistCount = playlist.extra_data.trackArtists.length;
+        
+        // Só mostrar se tem artistas pesquisados E se a lista é diferente
+        if (playlist.extra_data.requestedArtists && allTrackArtists !== artistsList) {
+            allArtistsSection = `
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <p><strong>Todos os artistas únicos das faixas (${artistCount}):</strong></p>
+                    <p style="font-size: 0.9em; color: #666; max-height: 100px; overflow-y: auto;">${allTrackArtists}</p>
+                </div>
+            `;
+        }
     }
 
     modalBody.innerHTML = `
@@ -395,11 +428,12 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
             <p><strong>Nome:</strong> ${playlist.name}</p>
             <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
             <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${artistsList}</p>
+            <p><strong>Artistas pesquisados:</strong> ${artistsList}</p>
             <p><strong>Faixas:</strong> ${playlist.tracks_total || playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
             <p><strong>Criada por:</strong> ${userInfo}</p>
             <p><strong>Link:</strong> <a href="${playlist.external_urls?.spotify || '#'}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
+            ${allArtistsSection}
         </div>
     `;
     
@@ -453,12 +487,31 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
         artistsList = playlist.requestedArtists.join(', ');
     }
 
+    console.log('✅ Final artists list:', artistsList);
+
+    // Preparar seção adicional com todos os artistas únicos das faixas (se diferente dos pesquisados)
+    let allArtistsSection = '';
+    if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
+        const allTrackArtists = playlist.extra_data.trackArtists.map(artist => artist.name).join(', ');
+        const artistCount = playlist.extra_data.trackArtists.length;
+        
+        // Só mostrar se tem artistas pesquisados E se a lista é diferente
+        if (playlist.extra_data.requestedArtists && allTrackArtists !== artistsList) {
+            allArtistsSection = `
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                    <p><strong>Todos os artistas únicos das faixas (${artistCount}):</strong></p>
+                    <p style="font-size: 0.9em; color: #666; max-height: 100px; overflow-y: auto;">${allTrackArtists}</p>
+                </div>
+            `;
+        }
+    }
+
     modalBody.innerHTML = `
         <div class="playlist-details">
             <p><strong>Nome:</strong> ${playlist.name}</p>
             <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
             <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${artistsList}</p>
+            <p><strong>Artistas pesquisados:</strong> ${artistsList}</p>
             <p><strong>Faixas:</strong> ${playlist.tracks_total || playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
             <p><strong>Criada por:</strong> ${userInfo}</p>
