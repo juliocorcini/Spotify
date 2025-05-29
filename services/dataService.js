@@ -69,17 +69,35 @@ async function registerUser(userData) {
           UPDATE users SET 
             display_name = $2, 
             email = $3, 
-            followers = $4, 
-            images = $5, 
+            country = $4,
+            profile_url = $5,
+            followers = $6, 
+            images = $7, 
             last_login = CURRENT_TIMESTAMP
           WHERE id = $1
-        `, [userData.id, userData.display_name, userData.email, userData.followers?.total || 0, JSON.stringify(userData.images || [])]);
+        `, [
+          userData.id, 
+          userData.display_name, 
+          userData.email, 
+          userData.country,
+          userData.profileUrl,
+          userData.followers?.total || 0, 
+          JSON.stringify(userData.images || [])
+        ]);
       } else {
         // Inserir novo usuário
         await pool.query(`
-          INSERT INTO users (id, display_name, email, followers, images, first_login, last_login)
-          VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `, [userData.id, userData.display_name, userData.email, userData.followers?.total || 0, JSON.stringify(userData.images || [])]);
+          INSERT INTO users (id, display_name, email, country, profile_url, followers, images, first_login, last_login)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [
+          userData.id, 
+          userData.display_name, 
+          userData.email, 
+          userData.country,
+          userData.profileUrl,
+          userData.followers?.total || 0, 
+          JSON.stringify(userData.images || [])
+        ]);
       }
     } catch (error) {
       console.error('Erro ao registrar usuário no banco:', error);
@@ -173,6 +191,8 @@ async function getUsers() {
           id, 
           display_name, 
           email, 
+          country,
+          profile_url as "profileUrl",
           followers, 
           images, 
           first_login as "firstLogin", 

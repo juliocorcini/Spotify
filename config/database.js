@@ -21,7 +21,9 @@ async function initializeDatabase() {
         images JSONB,
         first_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        country VARCHAR(10),
+        profile_url VARCHAR(500)
       )
     `);
     
@@ -51,6 +53,17 @@ async function initializeDatabase() {
     await pool.query(`
       ALTER TABLE playlists 
       ADD COLUMN IF NOT EXISTS artists_count INTEGER DEFAULT 0
+    `);
+    
+    // Adicionar colunas faltantes na tabela users
+    await pool.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS country VARCHAR(10)
+    `);
+    
+    await pool.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS profile_url VARCHAR(500)
     `);
     
     // Migrar playlists existentes para definir o tipo correto baseado na descrição

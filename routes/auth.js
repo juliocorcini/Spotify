@@ -38,11 +38,12 @@ router.get('/callback', async (req, res) => {
       
       await registerUser({
         id: userData.id,
-        displayName: userData.display_name,
+        display_name: userData.display_name,
         email: userData.email,
         country: userData.country,
-        profileUrl: userData.external_urls.spotify,
-        imageUrl: userData.images && userData.images.length > 0 ? userData.images[0].url : null
+        followers: userData.followers,
+        images: userData.images || [],
+        profileUrl: userData.external_urls?.spotify
       });
     } catch (error) {
       console.error('Erro ao obter dados do usuário:', error);

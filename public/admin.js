@@ -87,7 +87,7 @@ function formatDate(dateString) {
 // Obter nome de usuário pelo ID
 function getUserName(userId) {
     const user = users.find(u => u.id === userId);
-    return user ? user.displayName || user.id : userId;
+    return user ? user.display_name || user.id : userId;
 }
 
 // Renderizar tabela de usuários
@@ -97,7 +97,7 @@ function renderUserTable() {
     if (userFilter) {
         const filter = userFilter.toLowerCase();
         filteredUsers = users.filter(user => 
-            (user.displayName && user.displayName.toLowerCase().includes(filter)) ||
+            (user.display_name && user.display_name.toLowerCase().includes(filter)) ||
             (user.email && user.email.toLowerCase().includes(filter)) ||
             user.id.toLowerCase().includes(filter)
         );
@@ -132,14 +132,16 @@ function renderUserTable() {
     filteredUsers.forEach(user => {
         const userPlaylists = playlists.filter(p => p.userId === user.id).length;
         
+        // Extrair URL da imagem do array de images
+        const imageUrl = user.images && user.images.length > 0 ? user.images[0].url : null;
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>
-                <img src="${user.imageUrl || 'https://via.placeholder.com/40'}" alt="${user.displayName || 'User'}" class="user-avatar">
+                <img src="${imageUrl || 'https://via.placeholder.com/40'}" alt="${user.display_name || 'User'}" class="user-avatar">
             </td>
-            <td>${user.displayName || 'N/A'}</td>
+            <td>${user.display_name || 'N/A'}</td>
             <td>${user.email || 'N/A'}</td>
-            <td>${user.country || 'N/A'}</td>
             <td>${formatDate(user.firstLogin)}</td>
             <td>${formatDate(user.lastLogin)}</td>
             <td>${userPlaylists}</td>
@@ -232,19 +234,26 @@ function showUserDetails(userId) {
     const user = users.find(u => u.id === userId);
     if (!user) return;
     
-    modalTitle.textContent = `Detalhes do Usuário: ${user.displayName || user.id}`;
+    modalTitle.textContent = `Detalhes do Usuário: ${user.display_name || user.id}`;
+    
+    // Extrair URL da imagem do array de images
+    const imageUrl = user.images && user.images.length > 0 ? user.images[0].url : null;
+    
+    // Preparar seção do país - só mostrar se tiver informação válida
+    const countrySection = user.country && user.country !== 'N/A' ? 
+        `<p><strong>País:</strong> ${user.country}</p>` : '';
     
     modalBody.innerHTML = `
         <div class="user-details">
             <div class="user-profile">
-                <img src="${user.imageUrl || 'https://via.placeholder.com/150'}" alt="${user.displayName || 'User'}" class="user-detail-avatar">
-                <h3>${user.displayName || 'N/A'}</h3>
+                <img src="${imageUrl || 'https://via.placeholder.com/150'}" alt="${user.display_name || 'User'}" class="user-detail-avatar">
+                <h3>${user.display_name || 'N/A'}</h3>
                 <p><strong>ID:</strong> ${user.id}</p>
                 <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
-                <p><strong>País:</strong> ${user.country || 'N/A'}</p>
+                ${countrySection}
                 <p><strong>Primeiro Login:</strong> ${formatDate(user.firstLogin)}</p>
                 <p><strong>Último Login:</strong> ${formatDate(user.lastLogin)}</p>
-                <p><a href="${user.profileUrl}" target="_blank" class="profile-link">Ver Perfil no Spotify</a></p>
+                <p><a href="${user.profileUrl || '#'}" target="_blank" class="profile-link">Ver Perfil no Spotify</a></p>
             </div>
         </div>
     `;
@@ -259,7 +268,7 @@ function showUserPlaylists(userId) {
     
     const userPlaylists = playlists.filter(p => p.userId === userId);
     
-    modalTitle.textContent = `Playlists de ${user.displayName || user.id}`;
+    modalTitle.textContent = `Playlists de ${user.display_name || user.id}`;
     
     if (userPlaylists.length === 0) {
         modalBody.innerHTML = `<p>Este usuário não tem playlists.</p>`;
@@ -316,7 +325,7 @@ function showPlaylistDetails(playlistId) {
     
     let userInfo = 'Usuário não encontrado';
     if (user) {
-        userInfo = `<strong>${user.displayName || user.id}</strong>`;
+        userInfo = `<strong>${user.display_name || user.id}</strong>`;
         if (user.email) {
             userInfo += ` (${user.email})`;
         }
@@ -403,144 +412,3 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     
     if (playlist.requestedArtists && playlist.requestedArtists.length > 0) {
         artistsSection = `
-            <div class="artists-comparison">
-                <h3>Artistas Solicitados vs. Encontrados</h3>
-                <table class="artists-table">
-                    <thead>
-                        <tr>
-                            <th>Artista Solicitado</th>
-                            <th>Artista Encontrado</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-        
-        playlist.requestedArtists.forEach(reqArtist => {
-            const foundArtist = playlist.foundArtists && playlist.foundArtists.find(a => a.requestedName === reqArtist);
-            
-            let status, artistName;
-            if (!foundArtist) {
-                status = '<span class="status-error">Não encontrado</span>';
-                artistName = 'N/A';
-            } else if (foundArtist.error) {
-                status = `<span class="status-error">Erro: ${foundArtist.errorMessage || 'Desconhecido'}</span>`;
-                artistName = 'N/A';
-            } else {
-                status = '<span class="status-success">Encontrado</span>';
-                artistName = foundArtist.name;
-            }
-            
-            artistsSection += `
-                <tr>
-                    <td>${reqArtist}</td>
-                    <td>${artistName}</td>
-                    <td>${status}</td>
-                </tr>
-            `;
-        });
-        
-        artistsSection += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
-    
-    modalBody.innerHTML = `
-        <div class="playlist-details">
-            <p><strong>Nome:</strong> ${playlist.name}</p>
-            <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
-            <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${
-                // Priorizar trackArtists (para playlists de faixas específicas)
-                playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists) ?
-                    playlist.extra_data.trackArtists.map(artist => artist.name).join(', ') :
-                // Depois foundArtists (para playlists de artistas customizados)  
-                playlist.foundArtists ? 
-                    playlist.foundArtists
-                        .filter(artist => !artist.notFound && !artist.error)
-                        .map(artist => artist.name || artist.requestedName)
-                        .join(', ') || 'N/A' : 
-                // Fallback para contagem de artistas
-                (playlist.artistsCount || 'N/A')
-            }</p>
-            <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
-            <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
-            <p><strong>Criada por:</strong> ${userInfo}</p>
-            <p><strong>Link:</strong> <a href="${playlist.url}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
-            ${artistsSection}
-        </div>
-    `;
-    
-    modal.style.display = 'block';
-}
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', loadData);
-
-// Alternar entre abas
-tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        // Remover classe ativa de todos os botões e painéis
-        tabButtons.forEach(btn => btn.classList.remove('active'));
-        tabPanes.forEach(pane => pane.classList.remove('active'));
-        
-        // Adicionar classe ativa ao botão clicado
-        button.classList.add('active');
-        
-        // Ativar o painel correspondente
-        const tabId = button.getAttribute('data-tab');
-        document.getElementById(`${tabId}-tab`).classList.add('active');
-    });
-});
-
-// Pesquisar usuários
-userSearchInput.addEventListener('input', (e) => {
-    userFilter = e.target.value;
-    renderUserTable();
-});
-
-// Pesquisar playlists
-playlistSearchInput.addEventListener('input', (e) => {
-    playlistFilter = e.target.value;
-    renderPlaylistTable();
-});
-
-// Ordenar usuários
-userSortSelect.addEventListener('change', (e) => {
-    userSortField = e.target.value;
-    renderUserTable();
-});
-
-// Ordenar playlists
-playlistSortSelect.addEventListener('change', (e) => {
-    playlistSortField = e.target.value;
-    renderPlaylistTable();
-});
-
-// Alternar direção de ordenação de usuários
-userSortDirButton.addEventListener('click', () => {
-    userSortDirection = userSortDirection === 'asc' ? 'desc' : 'asc';
-    userSortDirButton.textContent = userSortDirection === 'asc' ? '↑' : '↓';
-    renderUserTable();
-});
-
-// Alternar direção de ordenação de playlists
-playlistSortDirButton.addEventListener('click', () => {
-    playlistSortDirection = playlistSortDirection === 'asc' ? 'desc' : 'asc';
-    playlistSortDirButton.textContent = playlistSortDirection === 'asc' ? '↑' : '↓';
-    renderPlaylistTable();
-});
-
-// Fechar modal
-closeModal.addEventListener('click', () => {
-    modal.style.display = 'none';
-});
-
-// Fechar modal ao clicar fora dele
-window.addEventListener('click', (event) => {
-    if (event.target === modal) {
-        modal.style.display = 'none';
-    }
-}); 
