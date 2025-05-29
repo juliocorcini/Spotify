@@ -354,7 +354,19 @@ function showPlaylistDetails(playlistId) {
 function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     // Tentar extrair nomes dos artistas do extra_data
     let artistsList = 'N/A';
-    if (playlist.extra_data && playlist.extra_data.foundArtists) {
+    
+    // Priorizar trackArtists (para playlists criadas com faixas específicas)
+    if (playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists)) {
+        const artistNames = playlist.extra_data.trackArtists
+            .map(artist => artist.name)
+            .filter(name => name);
+        
+        if (artistNames.length > 0) {
+            artistsList = artistNames.join(', ');
+        }
+    }
+    // Se não tem trackArtists, tentar foundArtists
+    else if (playlist.extra_data && playlist.extra_data.foundArtists) {
         const foundArtistsNames = playlist.extra_data.foundArtists
             .filter(artist => !artist.notFound && !artist.error)
             .map(artist => artist.name || artist.requestedName)
@@ -363,8 +375,9 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
         if (foundArtistsNames.length > 0) {
             artistsList = foundArtistsNames.join(', ');
         }
-    } else if (playlist.extra_data && playlist.extra_data.requestedArtists) {
-        // Fallback para artistas solicitados
+    } 
+    // Fallback para artistas solicitados
+    else if (playlist.extra_data && playlist.extra_data.requestedArtists) {
         artistsList = playlist.extra_data.requestedArtists.join(', ');
     }
 
@@ -439,12 +452,19 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
             <p><strong>Nome:</strong> ${playlist.name}</p>
             <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
             <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
-            <p><strong>Artistas:</strong> ${playlist.foundArtists ? 
-                playlist.foundArtists
-                    .filter(artist => !artist.notFound && !artist.error)
-                    .map(artist => artist.name || artist.requestedName)
-                    .join(', ') || 'N/A' : 
-                (playlist.artistsCount || 'N/A')}</p>
+            <p><strong>Artistas:</strong> ${
+                // Priorizar trackArtists (para playlists de faixas específicas)
+                playlist.extra_data && playlist.extra_data.trackArtists && Array.isArray(playlist.extra_data.trackArtists) ?
+                    playlist.extra_data.trackArtists.map(artist => artist.name).join(', ') :
+                // Depois foundArtists (para playlists de artistas customizados)  
+                playlist.foundArtists ? 
+                    playlist.foundArtists
+                        .filter(artist => !artist.notFound && !artist.error)
+                        .map(artist => artist.name || artist.requestedName)
+                        .join(', ') || 'N/A' : 
+                // Fallback para contagem de artistas
+                (playlist.artistsCount || 'N/A')
+            }</p>
             <p><strong>Faixas:</strong> ${playlist.trackCount || '0'}</p>
             <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
             <p><strong>Criada por:</strong> ${userInfo}</p>

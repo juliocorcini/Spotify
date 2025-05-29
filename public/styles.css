@@ -549,8 +549,21 @@ footer {
 
 .load-more-btn:hover,
 .search-track-btn:hover,
-.toggle-all-btn:hover {
+.toggle-all-btn:hover,
+.load-more-recommendations-btn:hover {
     background-color: #e8e8e8;
+}
+
+.load-more-recommendations-btn {
+    background-color: #1DB954;
+    color: white;
+    border: 1px solid #1AA34A;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-left: 10px;
 }
 
 .track-search-container {
@@ -802,6 +815,61 @@ footer {
     border: 1px solid #ff2222;
 }
 
+/* Badge especial para colaborações B2B */
+.track-artist-source.collaboration-b2b-special {
+    background: linear-gradient(45deg, #ff4444, #ff6b6b, #ff8a80);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 15px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    display: block;
+    margin-top: 6px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4);
+    border: 2px solid #ff2222;
+    text-align: center;
+    animation: b2b-glow 2s ease-in-out infinite alternate;
+    position: relative;
+    overflow: hidden;
+}
+
+.track-artist-source.collaboration-b2b-special::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+    animation: b2b-shine 3s linear infinite;
+}
+
+.track-artist-source.collaboration-b2b-special .collab-artists {
+    font-size: 0.75rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 2px 0;
+}
+
+.track-artist-source.collaboration-b2b-special .special-note {
+    font-size: 0.65rem;
+    opacity: 0.9;
+    font-style: italic;
+    margin-top: 2px;
+}
+
+@keyframes b2b-glow {
+    0% { box-shadow: 0 4px 12px rgba(255, 68, 68, 0.4); }
+    100% { box-shadow: 0 6px 20px rgba(255, 68, 68, 0.8); }
+}
+
+@keyframes b2b-shine {
+    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
 .track-artist-source.multi-artist {
     background-color: #00bcd4;
     color: white;
@@ -838,7 +906,7 @@ footer {
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(29, 185, 84, 0.8);
     border-radius: 4px;
     z-index: 5;
     animation: loading-pulse 1s infinite alternate;
@@ -846,9 +914,24 @@ footer {
 
 .track-image-container.loading-preview .play-icon {
     z-index: 6;
-    background-color: rgba(29, 185, 84, 0.9);
-    color: white;
+    opacity: 1 !important;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #1DB954;
     animation: loading-spin 1s linear infinite;
+    font-size: 12px;
+}
+
+.track-image-container.loading-preview::after {
+    content: 'Buscando...';
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: #1DB954;
+    font-weight: bold;
+    z-index: 6;
+    white-space: nowrap;
 }
 
 @keyframes loading-pulse {
@@ -857,6 +940,6 @@ footer {
 }
 
 @keyframes loading-spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    0% { transform: translate(-50%, -50%) rotate(0deg); }
+    100% { transform: translate(-50%, -50%) rotate(360deg); }
 } 

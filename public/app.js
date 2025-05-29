@@ -242,7 +242,7 @@ async function playTrackPreview(previewUrl, trackImageContainer, trackId = null)
                 playIcon.title = 'Buscando preview...';
             }
             
-            showLoader();
+            // NÃO usar showLoader() para não bloquear a tela toda
             const response = await fetch(`/track-preview/${trackId}`, {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`
@@ -284,7 +284,7 @@ async function playTrackPreview(previewUrl, trackImageContainer, trackId = null)
                 playIcon.textContent = '▶️';
                 playIcon.title = 'Reproduzir preview';
             }
-            hideLoader();
+            // NÃO usar hideLoader() aqui
         }
     }
     
@@ -476,9 +476,13 @@ function renderPlaylistDetails(artists, isPreview = false) {
                 let artistSourceHtml = '';
                 if (track.fromArtist && track.isFromB2B) {
                     if (track.isCollaboration && track.collaboratingArtists && track.collaboratingArtists.length > 1) {
-                        // Colaboração real entre os artistas B2B
+                        // Colaboração real entre os artistas B2B - BADGE ESPECIAL!
                         const collabArtists = track.collaboratingArtists.map(a => a.name).join(' & ');
-                        artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração B2B: ${collabArtists}</div>`;
+                        artistSourceHtml = `<div class="track-artist-source collaboration-b2b-special">
+                            🎭✨ COLABORAÇÃO B2B ESPECIAL ✨🎭
+                            <div class="collab-artists">${collabArtists}</div>
+                            <div class="special-note">🔥 Música dos dois artistas juntos! 🔥</div>
+                        </div>`;
                     } else if (track.allTrackArtists && track.allTrackArtists.length > 1) {
                         // Música com múltiplos artistas (pode incluir os do B2B + outros)
                         const allArtists = track.allTrackArtists.map(a => a.name).join(', ');
@@ -918,6 +922,7 @@ async function loadRecommendations(artists, limit = 10) {
             <h3>Músicas Recomendadas</h3>
             <button class="toggle-all-btn" data-action="select-all">Marcar Todas</button>
             <button class="toggle-all-btn" data-action="unselect-all">Desmarcar Todas</button>
+            <button class="load-more-recommendations-btn">Carregar Mais</button>
             <div class="recommendations-info">
                 Baseado no seu gosto musical e artistas selecionados
             </div>
@@ -975,11 +980,147 @@ async function loadRecommendations(artists, limit = 10) {
             checkboxes.forEach(checkbox => checkbox.checked = false);
         });
         
+        // Event listener para carregar mais recomendações
+        recommendationsSection.querySelector('.load-more-recommendations-btn').addEventListener('click', () => {
+            loadMoreRecommendations(artists, trackList, recommendationsSection);
+        });
+        
         // Adicionar à lista de artistas
         playlistArtists.appendChild(recommendationsSection);
         
     } catch (error) {
         console.error('Erro ao carregar recomendações:', error);
+    } finally {
+        hideLoader();
+    }
+}
+
+// Função para carregar mais recomendações
+async function loadMoreRecommendations(artists, trackListElement, recommendationsSection) {
+    try {
+        showLoader();
+        
+        // Obter IDs das faixas já exibidas para evitar duplicação
+        const existingTrackIds = Array.from(trackListElement.querySelectorAll('.track-item'))
+            .map(item => item.dataset.trackId);
+        
+        // Coletar IDs de faixas dos artistas para usar como seed
+        const seedTracks = [];
+        const seedArtists = [];
+        
+        artists.forEach(artist => {
+            if (artist.tracks && artist.tracks.length > 0 && !artist.notFound && !artist.error) {
+                // Usar algumas faixas como seed
+                const tracks = artist.tracks.slice(0, 2);
+                seedTracks.push(...tracks.map(t => t.id));
+                
+                // Usar o artista como seed
+                seedArtists.push(artist.id);
+            }
+        });
+        
+        // Limitar a 5 seeds no total (limitação da API do Spotify)
+        const finalSeedTracks = seedTracks.slice(0, 3);
+        const finalSeedArtists = seedArtists.slice(0, 2);
+        
+        if (finalSeedTracks.length === 0 && finalSeedArtists.length === 0) {
+            alert('Não há artistas suficientes para buscar mais recomendações.');
+            hideLoader();
+            return;
+        }
+        
+        // Buscar mais recomendações
+        let query = '';
+        if (finalSeedTracks.length > 0) {
+            query += `seed_tracks=${finalSeedTracks.join(',')}`;
+        }
+        
+        if (finalSeedArtists.length > 0) {
+            if (query) query += '&';
+            query += `seed_artists=${finalSeedArtists.join(',')}`;
+        }
+        
+        // Adicionar offset baseado no número de faixas já carregadas
+        const offset = existingTrackIds.length;
+        query += `&limit=10&offset=${offset}`;
+        
+        // Adicionar parâmetros de gênero para melhorar precisão
+        const artistNames = artists
+            .filter(a => !a.notFound && !a.error)
+            .map(a => a.name)
+            .join(' ');
+        
+        if (query) query += '&';
+        query += `target_artists=${encodeURIComponent(artistNames)}`;
+        
+        const response = await fetch(`/search-recommendations?${query}`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Erro ao buscar mais recomendações: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.tracks || data.tracks.length === 0) {
+            alert('Não há mais recomendações disponíveis.');
+            hideLoader();
+            return;
+        }
+        
+        // Filtrar faixas que já estão na lista
+        const newTracks = data.tracks.filter(track => !existingTrackIds.includes(track.id));
+        
+        if (newTracks.length === 0) {
+            alert('Todas as novas recomendações já estão na lista.');
+            hideLoader();
+            return;
+        }
+        
+        // Adicionar novas faixas NO TOPO da lista (após o título)
+        newTracks.reverse().forEach(track => {
+            const trackItem = document.createElement('li');
+            trackItem.className = 'track-item';
+            trackItem.dataset.trackUri = track.uri;
+            trackItem.dataset.trackId = track.id;
+            
+            const albumImageSrc = track.album?.images?.length > 0 ? 
+                track.album.images[0].url : 'https://placehold.co/50x50?text=No+Image';
+            
+            // O artista da faixa
+            const artistName = track.artists.map(a => a.name).join(', ');
+            
+            trackItem.innerHTML = `
+                <input type="checkbox" class="track-checkbox">
+                <div class="track-image-container">
+                    <img src="${albumImageSrc}" alt="${track.album?.name || 'Album'}" class="track-image" 
+                         data-preview-url="${track.preview_url || ''}" 
+                         title="${track.preview_url ? 'Clique para ouvir preview' : 'Preview não disponível'}">
+                    <div class="play-icon">▶️</div>
+                </div>
+                <div class="track-details">
+                    <div class="track-name">${track.name}</div>
+                    <div class="track-album">${artistName} - ${track.album?.name || ''}</div>
+                </div>
+                <div class="track-duration">${formatDuration(track.duration_ms)}</div>
+            `;
+            
+            // Adicionar event listener para preview de áudio
+            addPreviewEventListeners(trackItem);
+            
+            // Inserir no TOPO da lista (primeiro elemento)
+            trackListElement.insertBefore(trackItem, trackListElement.firstChild);
+        });
+        
+        // Rolar suavemente para o topo da seção de recomendações para mostrar as novas músicas
+        recommendationsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+    } catch (error) {
+        console.error('Erro ao carregar mais recomendações:', error);
+        alert(`Erro ao carregar mais recomendações: ${error.message}`);
     } finally {
         hideLoader();
     }
@@ -1055,9 +1196,13 @@ async function loadMoreSpecialTracks(artistId, trackListElement, artistName, ori
             let artistSourceHtml = '';
             if (track.fromArtist && track.isFromB2B) {
                 if (track.isCollaboration && track.collaboratingArtists && track.collaboratingArtists.length > 1) {
-                    // Colaboração real entre os artistas B2B
+                    // Colaboração real entre os artistas B2B - BADGE ESPECIAL!
                     const collabArtists = track.collaboratingArtists.map(a => a.name).join(' & ');
-                    artistSourceHtml = `<div class="track-artist-source collaboration">🎭 Colaboração B2B: ${collabArtists}</div>`;
+                    artistSourceHtml = `<div class="track-artist-source collaboration-b2b-special">
+                        🎭✨ COLABORAÇÃO B2B ESPECIAL ✨🎭
+                        <div class="collab-artists">${collabArtists}</div>
+                        <div class="special-note">🔥 Música dos dois artistas juntos! 🔥</div>
+                    </div>`;
                 } else if (track.allTrackArtists && track.allTrackArtists.length > 1) {
                     // Música com múltiplos artistas (pode incluir os do B2B + outros)
                     const allArtists = track.allTrackArtists.map(a => a.name).join(', ');

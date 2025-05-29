@@ -5,11 +5,17 @@ const path = require('path');
 
 // Inicializar banco de dados se disponível
 async function initializeApp() {
-  try {
-    const { initializeDatabase } = require('./config/database');
-    await initializeDatabase();
-  } catch (error) {
-    console.log('📁 Continuando sem banco de dados (desenvolvimento)');
+  // Só tentar inicializar banco se DATABASE_URL estiver configurada
+  if (process.env.DATABASE_URL) {
+    try {
+      const { initializeDatabase } = require('./config/database');
+      await initializeDatabase();
+    } catch (error) {
+      console.error('❌ Erro ao conectar com banco de dados:', error.message);
+      console.log('📁 Continuando com armazenamento em arquivos locais');
+    }
+  } else {
+    console.log('📁 DATABASE_URL não configurada, usando armazenamento em arquivos locais');
   }
 }
 

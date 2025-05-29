@@ -38,10 +38,30 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
       await withRetry(() => spotifyApi.addTracksToPlaylist(playlistId, chunk));
     }
     
-    // 4. Obter informações sobre as faixas adicionadas para exibir na resposta
+    // 4. Obter informações sobre as faixas adicionadas para calcular artistas únicos
     const addedTracksResponse = await withRetry(() => spotifyApi.getPlaylistTracks(playlistId));
     
-    // Registrar a playlist criada
+    // 5. Calcular artistas únicos das faixas adicionadas
+    const uniqueArtists = new Set();
+    const artistsList = [];
+    
+    if (addedTracksResponse.body.items && addedTracksResponse.body.items.length > 0) {
+      addedTracksResponse.body.items.forEach(item => {
+        if (item.track && item.track.artists) {
+          item.track.artists.forEach(artist => {
+            if (!uniqueArtists.has(artist.id)) {
+              uniqueArtists.add(artist.id);
+              artistsList.push({
+                id: artist.id,
+                name: artist.name
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Registrar a playlist criada com contagem real de artistas
     const playlistDetails = {
       id: playlist.body.id,
       name: playlist.body.name,
@@ -52,13 +72,21 @@ router.post('/create-custom-tracks-playlist', requireSpotifyAuth, async (req, re
     
     await registerPlaylist(playlistDetails, userId, { 
       type: 'custom',
-      artistsCount: 0 // Playlist manual não tem artistas específicos
+      artistsCount: uniqueArtists.size,
+      foundArtists: artistsList.map(artist => ({
+        id: artist.id,
+        name: artist.name,
+        requestedName: artist.name
+      })),
+      trackArtists: artistsList
     });
     
     res.status(200).json({
       success: true,
       playlist: playlist.body,
-      addedTracks: addedTracksResponse.body.items
+      addedTracks: addedTracksResponse.body.items,
+      uniqueArtistsCount: uniqueArtists.size,
+      artists: artistsList
     });
   } catch (err) {
     console.error('Error creating playlist with custom tracks:', err);
