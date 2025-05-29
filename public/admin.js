@@ -331,12 +331,8 @@ function showPlaylistDetails(playlistId) {
         }
     }
     
-    // Solicitar detalhes adicionais da playlist se necessário
-    const urlParams = new URLSearchParams(window.location.search);
-    const password = urlParams.get('password');
-    
     // Verificar se temos dados adicionais na playlist (artistas solicitados vs encontrados)
-    if (playlist.requestedArtists) {
+    if (playlist.requestedArtists || (playlist.extra_data && playlist.extra_data.requestedArtists)) {
         renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText);
     } else {
         // Fazer uma solicitação para obter detalhes completos da playlist
@@ -470,15 +466,19 @@ function renderBasicPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
 function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     let artistsSection = '';
     
-    if (playlist.requestedArtists && playlist.requestedArtists.length > 0) {
+    // Buscar requestedArtists na estrutura correta
+    const requestedArtists = playlist.requestedArtists || (playlist.extra_data && playlist.extra_data.requestedArtists);
+    const foundArtists = playlist.foundArtists || (playlist.extra_data && playlist.extra_data.foundArtists);
+    
+    if (requestedArtists && requestedArtists.length > 0) {
         artistsSection = `
             <div class="artists-section">
                 <h4>Análise de Artistas</h4>
-                <p><strong>Artistas solicitados:</strong> ${playlist.requestedArtists.length}</p>
+                <p><strong>Artistas solicitados:</strong> ${requestedArtists.length}</p>
                 
                 <div class="artists-grid">
-                    ${playlist.requestedArtists.map((artist, index) => {
-                        const foundArtist = playlist.foundArtists ? playlist.foundArtists[index] : null;
+                    ${requestedArtists.map((artist, index) => {
+                        const foundArtist = foundArtists ? foundArtists[index] : null;
                         const status = foundArtist && !foundArtist.notFound && !foundArtist.error ? 'found' : 'not-found';
                         const statusText = status === 'found' ? '✅ Encontrado' : '❌ Não encontrado';
                         const foundName = foundArtist && foundArtist.name ? foundArtist.name : 'N/A';
@@ -500,37 +500,39 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     
     // Extrair lista de artistas para exibição
     let artistsList = 'N/A';
-    if (playlist.foundArtists) {
-        const foundArtistsNames = playlist.foundArtists
+    
+    // PRIORIDADE 1: Artistas solicitados/pesquisados
+    if (requestedArtists && Array.isArray(requestedArtists)) {
+        artistsList = requestedArtists.join(', ');
+        console.log('🎤 Using requested artists:', requestedArtists);
+    }
+    // PRIORIDADE 2: Artistas encontrados (filtrar apenas os que foram encontrados com sucesso)
+    else if (foundArtists && Array.isArray(foundArtists)) {
+        const foundArtistsNames = foundArtists
             .filter(artist => !artist.notFound && !artist.error)
             .map(artist => artist.name || artist.requestedName)
             .filter(name => name);
         
         if (foundArtistsNames.length > 0) {
             artistsList = foundArtistsNames.join(', ');
+            console.log('✅ Using found artists:', foundArtistsNames);
         }
-    } else if (playlist.requestedArtists) {
-        artistsList = playlist.requestedArtists.join(', ');
     }
-    // FALLBACK: Extrair artistas do nome da playlist se começar com "Mix" e não tiver dados salvos
+    // PRIORIDADE 3: FALLBACK - Extrair artistas do nome da playlist se começar com "Mix"
     else if (playlist.name && playlist.name.startsWith('Mix ')) {
-        // Extrair artistas do nome da playlist (ex: "Mix Gloria Groove, Vintage Culture, ARTBAT")
-        const nameWithoutMix = playlist.name.replace(/^Mix\s+/, ''); // Remove "Mix " do início
+        const nameWithoutMix = playlist.name.replace(/^Mix\s+/, '');
         
-        // Verificar se parece conter artistas (tem vírgulas ou "&")
         if (nameWithoutMix.includes(',') || nameWithoutMix.includes('&')) {
-            // Dividir por vírgulas e limpar espaços
             const extractedArtists = nameWithoutMix
-                .split(/[,&]/) // Dividir por vírgula ou &
+                .split(/[,&]/)
                 .map(artist => artist.trim())
-                .filter(artist => artist.length > 0 && artist !== 'e'); // Remover vazios e palavras conectoras
+                .filter(artist => artist.length > 0 && artist !== 'e');
             
             if (extractedArtists.length > 0) {
                 artistsList = extractedArtists.join(', ');
                 console.log('🎵 Extracted artists from playlist name (full view):', extractedArtists);
             }
         } else {
-            // Se não tem vírgulas, pode ser um artista único (ex: "Mix Alok")
             const singleArtist = nameWithoutMix.trim();
             if (singleArtist.length > 0) {
                 artistsList = singleArtist;
