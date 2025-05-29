@@ -412,3 +412,128 @@ function renderFullPlaylistDetails(playlist, userInfo, badgeClass, typeText) {
     
     if (playlist.requestedArtists && playlist.requestedArtists.length > 0) {
         artistsSection = `
+            <div class="artists-section">
+                <h4>Análise de Artistas</h4>
+                <p><strong>Artistas solicitados:</strong> ${playlist.requestedArtists.length}</p>
+                
+                <div class="artists-grid">
+                    ${playlist.requestedArtists.map((artist, index) => {
+                        const foundArtist = playlist.foundArtists ? playlist.foundArtists[index] : null;
+                        const status = foundArtist && !foundArtist.notFound && !foundArtist.error ? 'found' : 'not-found';
+                        const statusText = status === 'found' ? '✅ Encontrado' : '❌ Não encontrado';
+                        const foundName = foundArtist && foundArtist.name ? foundArtist.name : 'N/A';
+                        
+                        return `
+                            <div class="artist-card ${status}">
+                                <div class="artist-info">
+                                    <strong>Solicitado:</strong> ${artist}<br>
+                                    <strong>Encontrado:</strong> ${foundName}<br>
+                                    <span class="status">${statusText}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    // Extrair lista de artistas para exibição
+    let artistsList = 'N/A';
+    if (playlist.foundArtists) {
+        const foundArtistsNames = playlist.foundArtists
+            .filter(artist => !artist.notFound && !artist.error)
+            .map(artist => artist.name || artist.requestedName)
+            .filter(name => name);
+        
+        if (foundArtistsNames.length > 0) {
+            artistsList = foundArtistsNames.join(', ');
+        }
+    } else if (playlist.requestedArtists) {
+        artistsList = playlist.requestedArtists.join(', ');
+    }
+
+    modalBody.innerHTML = `
+        <div class="playlist-details">
+            <p><strong>Nome:</strong> ${playlist.name}</p>
+            <p><strong>Descrição:</strong> ${playlist.description || 'N/A'}</p>
+            <p><strong>Tipo:</strong> <span class="badge ${badgeClass}">${typeText}</span></p>
+            <p><strong>Artistas:</strong> ${artistsList}</p>
+            <p><strong>Faixas:</strong> ${playlist.tracks_total || playlist.trackCount || '0'}</p>
+            <p><strong>Criada em:</strong> ${formatDate(playlist.createdAt)}</p>
+            <p><strong>Criada por:</strong> ${userInfo}</p>
+            <p><strong>Link:</strong> <a href="${playlist.external_urls?.spotify || '#'}" target="_blank" class="playlist-link">Abrir no Spotify</a></p>
+            
+            ${artistsSection}
+        </div>
+    `;
+    
+    modal.style.display = 'block';
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Carregar dados iniciais
+    loadData();
+    
+    // Event listeners para tabs
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.dataset.tab;
+            
+            // Remover classe active de todas as tabs
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+            
+            // Adicionar classe active à tab selecionada
+            this.classList.add('active');
+            document.getElementById(targetTab + '-tab').classList.add('active');
+        });
+    });
+    
+    // Event listeners para busca
+    userSearchInput.addEventListener('input', function() {
+        userFilter = this.value;
+        renderUserTable();
+    });
+    
+    playlistSearchInput.addEventListener('input', function() {
+        playlistFilter = this.value;
+        renderPlaylistTable();
+    });
+    
+    // Event listeners para ordenação
+    userSortSelect.addEventListener('change', function() {
+        userSortField = this.value;
+        renderUserTable();
+    });
+    
+    playlistSortSelect.addEventListener('change', function() {
+        playlistSortField = this.value;
+        renderPlaylistTable();
+    });
+    
+    userSortDirButton.addEventListener('click', function() {
+        userSortDirection = userSortDirection === 'asc' ? 'desc' : 'asc';
+        this.textContent = userSortDirection === 'asc' ? '↑' : '↓';
+        renderUserTable();
+    });
+    
+    playlistSortDirButton.addEventListener('click', function() {
+        playlistSortDirection = playlistSortDirection === 'asc' ? 'desc' : 'asc';
+        this.textContent = playlistSortDirection === 'asc' ? '↑' : '↓';
+        renderPlaylistTable();
+    });
+    
+    // Event listener para fechar modal
+    closeModal.addEventListener('click', function() {
+        modal.style.display = 'none';
+    });
+    
+    // Fechar modal clicando fora dele
+    window.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+});

@@ -331,4 +331,87 @@ table tr:hover {
 .status-error {
     color: #c62828;
     font-weight: 500;
+}
+
+/* Detalhes de usuário */
+.user-details {
+    text-align: center;
+}
+
+.user-profile img.user-detail-avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    margin-bottom: 15px;
+}
+
+.profile-link, .playlist-link {
+    color: #1DB954;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.profile-link:hover, .playlist-link:hover {
+    text-decoration: underline;
+}
+
+/* Análise de artistas */
+.artists-section {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.artists-section h4 {
+    color: #333;
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+}
+
+.artists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.artist-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 15px;
+    background-color: #f9f9f9;
+}
+
+.artist-card.found {
+    border-color: #28a745;
+    background-color: #f8fff9;
+}
+
+.artist-card.not-found {
+    border-color: #dc3545;
+    background-color: #fff8f8;
+}
+
+.artist-info {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.artist-card .status {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.artist-card.found .status {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.artist-card.not-found .status {
+    background-color: #f8d7da;
+    color: #721c24;
 } 
